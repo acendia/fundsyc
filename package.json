@@ -3,16 +3,21 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build"
+    "dev": "concurrently -k \"npm:dev:api\" \"npm:dev:web\"",
+    "build": "tsc --noEmit && vite build",
+    "dev:api": "node server.mjs",
+    "dev:web": "vite --host 127.0.0.1"
   },
   "dependencies": {
+    "express": "^5.3.0",
+    "pg": "^8.23.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
+    "concurrently": "^10.0.6",
     "typescript": "^5.8.2",
     "vite": "^6.2.2"
   }

@@ -1,40 +1,162 @@
+import { useEffect, useState, type FormEvent } from "react";
 import { createRoot } from "react-dom/client";
-import { ConsortiumPartner, Organization, PartnerContact, Proposal, Responsibility } from "./models";
 
-const now = new Date();
-const proposal = new Proposal("proposal-1", "Collaborative Research Proposal", "CRP", "draft", "partner-1", "user-1", now, now);
-const organization = new Organization("org-1", "Example University", "EU", "university", "GR", "Athens", null, null, null, now, now);
-const partner = new ConsortiumPartner("partner-1", proposal.id, organization.id, "active", "contact-1", now, null, now, now);
-const contact = new PartnerContact("contact-1", proposal.id, partner.id, "Example Researcher", "researcher@example.org", "researcher@example.org", null, null, null, now, now);
-const responsibility = new Responsibility("responsibility-1", proposal.id, "Proposal coordination", null, 0, now, now);
+type Partner = {
+  id: string;
+  status: string;
+  legal_name: string;
+  city: string | null;
+  country_code: string;
+  full_name: string | null;
+  email: string | null;
+  responsibilities: string[];
+};
+
+type Proposal = {
+  id: string;
+  title: string;
+  acronym: string | null;
+  status: string;
+  coordinator_partner_id: string;
+  partners: Partner[];
+};
+
+type ExampleData = Record<string, Record<string, string | null>[]>;
+
+const sections: [string, string][] = [
+  ["users", "Users"],
+  ["organizations", "Organizations"],
+  ["proposals", "Proposals"],
+  ["partners", "Partners"],
+  ["contacts", "Contacts"],
+  ["memberships", "Memberships"],
+  ["responsibilities", "Responsibilities"],
+  ["assignments", "Responsibility assignments"],
+  ["invitations", "Invitations"],
+  ["audit_events", "Audit events"],
+];
 
 function App() {
+  const [proposals, setProposals] = useState<Proposal[] | null>(null);
+  const [error, setError] = useState(false);
+  const [exampleData, setExampleData] = useState<ExampleData | null>(null);
+  const [revision, setRevision] = useState(0);
+  const [formError, setFormError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [created, setCreated] = useState(false);
+
+  async function createProposal(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    setSaving(true);
+    setFormError("");
+    setCreated(false);
+    try {
+      const response = await fetch("/api/proposals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(Object.fromEntries(data)),
+      });
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.error || "Could not create the proposal.");
+      }
+      form.reset();
+      setCreated(true);
+      setError(false);
+      setRevision((current) => current + 1);
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "Could not create the proposal.");
+    } finally {
+      setSaving(false);
+    }
+  }
+  
+  // fetch proposals from the API on component mount
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/proposals", { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error("could not load proposals");
+        return response.json();
+      })
+      .then(setProposals)
+      .catch(() => { if (!controller.signal.aborted) setError(true); });
+    fetch("/api/example-data", { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error("could not load example data");
+        return response.json();
+      })
+      .then(setExampleData)
+      .catch(() => { if (!controller.signal.aborted) setError(true); });
+    return () => controller.abort();
+  }, [revision]);
+
   return (
     <main>
       <h1>FundSyc</h1>
-      <p>Example data for now. Changes are not saved.</p>
       <section>
-        <h2>Proposal</h2>
-        <p><strong>Title:</strong> {proposal.title} ({proposal.acronym})</p>
-        <p><strong>Status:</strong> {proposal.status}</p>
+        <h2>Create a proposal</h2>
+        <p>The seeded demo user will be the coordinator manager and primary contact.</p>
+        <form onSubmit={createProposal}>
+          <p><label>Proposal title <input name="title" required /></label></p>
+          <p><label>Acronym <input name="acronym" /></label></p>
+          <p><label>Coordinator organization <input name="organization" required /></label></p>
+          <p><label>Country code <input name="countryCode" required pattern="[A-Za-z]{2}" maxLength={2} placeholder="GR" /></label></p>
+          <p><label>City <input name="city" /></label></p>
+          <button type="submit" disabled={saving}>{saving ? "Creating..." : "Create proposal"}</button>
+        </form>
+        {formError && <p role="alert">{formError}</p>}
+        {created && <p role="status">Proposal created.</p>}
       </section>
-      <section>
-        <h2>Consortium</h2>
-        <table>
-          <thead>
-            <tr><th scope="col">Organization</th><th scope="col">Role</th><th scope="col">Status</th><th scope="col">Contact</th><th scope="col">Responsibility</th></tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>{organization.legalName} ({organization.city}, {organization.countryCode})</td>
-              <td>{partner.id === proposal.coordinatorPartnerId ? "Coordinator" : "Beneficiary"}</td>
-              <td>{partner.status}</td>
-              <td>{contact.fullName} ({contact.email})</td>
-              <td>{responsibility.title}</td>
-            </tr>
-          </tbody>
-        </table>
-      </section>
+      {error && <p>Could not load data. Check that the API and local database are running.</p>}
+      {!error && proposals === null && <p>Loading...</p>}
+      {proposals?.length === 0 && <p>No proposals found. Run the database seed to add an example.</p>}
+      {proposals?.map((proposal) => (
+        <section key={proposal.id}>
+          <h2>Proposal</h2>
+          <p><strong>Title:</strong> {proposal.title}{proposal.acronym && ` (${proposal.acronym})`}</p>
+          <p><strong>Status:</strong> {proposal.status}</p>
+          <h3>Consortium</h3>
+          {proposal.partners.length === 0 ? <p>No active partners.</p> : (
+            <table>
+              <thead><tr><th scope="col">Organization</th><th scope="col">Role</th><th scope="col">Status</th><th scope="col">Contact</th><th scope="col">Responsibility</th></tr></thead>
+              <tbody>
+                {proposal.partners.map((partner) => (
+                  <tr key={partner.id}>
+                    <td>{partner.legal_name} ({[partner.city, partner.country_code].filter(Boolean).join(", ")})</td>
+                    <td>{partner.id === proposal.coordinator_partner_id ? "Coordinator" : "Beneficiary"}</td>
+                    <td>{partner.status}</td>
+                    <td>{partner.full_name ? `${partner.full_name} (${partner.email})` : "—"}</td>
+                    <td>{partner.responsibilities.join(", ") || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+      ))}
+      {exampleData && (
+        <section>
+          <h2>All database records</h2>
+          {sections.map(([key, title]) => {
+            const rows = exampleData[key] ?? [];
+            const columns = rows.length ? Object.keys(rows[0]) : [];
+            return (
+              <section key={key}>
+                <h3>{title}</h3>
+                {rows.length === 0 ? <p>No records yet.</p> : (
+                  <table>
+                    <thead><tr>{columns.map((column) => <th key={column} scope="col">{column.replaceAll("_", " ")}</th>)}</tr></thead>
+                    <tbody>{rows.map((row, index) => <tr key={index}>{columns.map((column) => <td key={column}>{row[column] ?? "—"}</td>)}</tr>)}</tbody>
+                  </table>
+                )}
+              </section>
+            );
+          })}
+        </section>
+      )}
     </main>
   );
 }
