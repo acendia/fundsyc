@@ -44,6 +44,27 @@ function App() {
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
   const [created, setCreated] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editMessage, setEditMessage] = useState("");
+  const [editingSave, setEditingSave] = useState(false);
+
+  async function saveContact(event: FormEvent<HTMLFormElement>, proposalId: string, partnerId: string) {
+    event.preventDefault();
+    const data = Object.fromEntries(new FormData(event.currentTarget));
+    setEditingSave(true);
+    setEditMessage("");
+    try {
+      const response = await fetch(`/api/proposals/${proposalId}/partners/${partnerId}/contact`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not save contact.");
+      setEditMessage("Contact saved.");
+      setRevision((current) => current + 1);
+    } catch (error) {
+      setEditMessage(error instanceof Error ? error.message : "Could not save contact.");
+    } finally { setEditingSave(false); }
+  }
 
   async function createProposal(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -93,6 +114,31 @@ function App() {
     return () => controller.abort();
   }, [revision]);
 
+  const selectedProposal = proposals?.find((proposal) => proposal.id === editing);
+  if (editing) return (
+    <main>
+      <h1>Edit consortium</h1>
+      <button type="button" onClick={() => { setEditing(null); setEditMessage(""); }}>Back to proposals</button>
+      {!selectedProposal ? <p>Proposal not found.</p> : <>
+        <h2>{selectedProposal.title}</h2>
+        <p>Edit the primary contact for partners managed by the demo user.</p>
+        {selectedProposal.partners.map((partner) => (
+          <section key={partner.id}>
+            <h3>{partner.legal_name}</h3>
+            <p>{partner.id === selectedProposal.coordinator_partner_id ? "Coordinator" : "Beneficiary"} — {partner.status}</p>
+            <form key={`${partner.id}-${revision}`} onSubmit={(event) => saveContact(event, selectedProposal.id, partner.id)}>
+              <p><label>Contact name <input name="fullName" defaultValue={partner.full_name ?? ""} required /></label></p>
+              <p><label>Contact email <input name="email" type="email" defaultValue={partner.email ?? ""} required /></label></p>
+              <button disabled={editingSave || !["draft", "in_preparation"].includes(selectedProposal.status)}>Save contact</button>
+            </form>
+          </section>
+        ))}
+        {selectedProposal.partners.length === 0 && <p>No active partners.</p>}
+      </>}
+      {editMessage && <p role="status">{editMessage}</p>}
+    </main>
+  );
+
   return (
     <main>
       <h1>FundSyc</h1>
@@ -119,6 +165,7 @@ function App() {
           <p><strong>Title:</strong> {proposal.title}{proposal.acronym && ` (${proposal.acronym})`}</p>
           <p><strong>Status:</strong> {proposal.status}</p>
           <h3>Consortium</h3>
+          <button type="button" onClick={() => setEditing(proposal.id)}>Edit consortium</button>
           {proposal.partners.length === 0 ? <p>No active partners.</p> : (
             <table>
               <thead><tr><th scope="col">Organization</th><th scope="col">Role</th><th scope="col">Status</th><th scope="col">Contact</th><th scope="col">Responsibility</th></tr></thead>

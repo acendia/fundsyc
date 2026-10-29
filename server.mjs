@@ -42,6 +42,35 @@ app.post("/api/proposals", async (request, response) => {
   }
 });
 
+app.patch("/api/proposals/:proposalId/partners/:partnerId/contact", async (request, response) => {
+  const { fullName, email } = request.body ?? {};
+  if (typeof fullName !== "string" || !fullName.trim() || typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    return response.status(400).json({ error: "Enter a name and valid email." });
+  }
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuid.test(request.params.proposalId) || !uuid.test(request.params.partnerId)) return response.status(404).json({ error: "Partner not found." });
+  let client;
+  try {
+    client = await pool.connect();
+    await client.query("begin");
+    const proposal = await client.query("select status from proposals where id = $1 for update", [request.params.proposalId]);
+    if (!proposal.rowCount) { await client.query("rollback"); return response.status(404).json({ error: "Proposal not found." }); }
+    if (!['draft', 'in_preparation'].includes(proposal.rows[0].status)) { await client.query("rollback"); return response.status(409).json({ error: "This proposal is read-only." }); }
+    const allowed = await client.query("select 1 from proposal_memberships m join users u on u.id = m.user_id where m.proposal_id = $1 and m.partner_id = $2 and m.user_id = $3 and m.status = 'active' and m.access_role in ('coordinator_manager', 'partner_admin') and u.status = 'active'", [request.params.proposalId, request.params.partnerId, demoUserId]);
+    if (!allowed.rowCount) { await client.query("rollback"); return response.status(403).json({ error: "The demo user cannot edit this partner." }); }
+    const updated = await client.query("update partner_contacts c set full_name = $3, email = $4, email_key = $5, updated_at = now() from consortium_partners p where p.proposal_id = $1 and p.id = $2 and p.status = 'active' and c.id = p.primary_contact_id and c.partner_id = p.id and c.proposal_id = p.proposal_id returning c.id", [request.params.proposalId, request.params.partnerId, fullName.trim(), email.trim(), email.trim().toLowerCase()]);
+    if (!updated.rowCount) { await client.query("rollback"); return response.status(404).json({ error: "Primary contact not found." }); }
+    await client.query("insert into audit_events (id, proposal_id, actor_user_id, action, entity_type, entity_id) values ($1, $2, $3, 'contact.updated', 'partner_contact', $4)", [randomUUID(), request.params.proposalId, demoUserId, updated.rows[0].id]);
+    await client.query("commit");
+    response.json({ ok: true });
+  } catch (error) {
+    if (client) await client.query("rollback").catch(() => {});
+    if (error.code === '23505') return response.status(409).json({ error: "That email is already used by another contact." });
+    console.error("contact update failed", error);
+    response.status(500).json({ error: "Could not update the contact." });
+  } finally { client?.release(); }
+});
+
 app.get("/api/proposals", async (_request, response) => {
   try {
     const proposals = await pool.query("select id, title, acronym, status, coordinator_partner_id from proposals order by created_at, id");
