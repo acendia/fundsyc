@@ -150,7 +150,7 @@ function App() {
           <section key={partner.id}>
             <h3>{partner.legal_name}</h3>
             <p>{partner.id === selectedProposal.coordinator_partner_id ? "Coordinator" : "Beneficiary"} — {partner.status}</p>
-            <form key={`${partner.id}-${revision}`} onSubmit={(event) => saveContact(event, selectedProposal.id, partner.id)}>
+            <form onSubmit={(event) => saveContact(event, selectedProposal.id, partner.id)}>
               <p><label>Contact name <input name="fullName" defaultValue={partner.full_name ?? ""} required /></label></p>
               <p><label>Contact email <input name="email" type="email" defaultValue={partner.email ?? ""} required /></label></p>
               <button disabled={editingSave || !["draft", "in_preparation"].includes(selectedProposal.status)}>Save contact</button>
