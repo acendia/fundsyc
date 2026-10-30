@@ -45,6 +45,7 @@ function App() {
   const [saving, setSaving] = useState(false);
   const [created, setCreated] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
+  const [screen, setScreen] = useState<"review" | "edit">("review");
   const [editMessage, setEditMessage] = useState("");
   const [editingSave, setEditingSave] = useState(false);
 
@@ -115,10 +116,33 @@ function App() {
   }, [revision]);
 
   const selectedProposal = proposals?.find((proposal) => proposal.id === editing);
+  if (editing && screen === "review") return (
+    <main>
+      <h1>Review consortium</h1>
+      <button type="button" onClick={() => { setEditing(null); setEditMessage(""); }}>Back to proposals</button>
+      {!selectedProposal ? <p>Proposal not found.</p> : <>
+        <h2>{selectedProposal.title}</h2>
+        <p><strong>Status:</strong> {selectedProposal.status}</p>
+        <button type="button" onClick={() => { setScreen("edit"); setEditMessage(""); }}>Edit consortium</button>
+        <h3>Partners</h3>
+        {selectedProposal.partners.length === 0 && <p>No active partners.</p>}
+        {selectedProposal.partners.map((partner) => (
+          <section key={partner.id}>
+            <h4>{partner.legal_name}</h4>
+            <p><strong>Role:</strong> {partner.id === selectedProposal.coordinator_partner_id ? "Coordinator" : "Beneficiary"}</p>
+            <p><strong>Status:</strong> {partner.status}</p>
+            <p><strong>Location:</strong> {[partner.city, partner.country_code].filter(Boolean).join(", ")}</p>
+            <p><strong>Primary contact:</strong> {partner.full_name ? `${partner.full_name} (${partner.email})` : "Not listed"}</p>
+            <p><strong>Responsibilities:</strong> {partner.responsibilities.join(", ") || "None listed"}</p>
+          </section>
+        ))}
+      </>}
+    </main>
+  );
   if (editing) return (
     <main>
       <h1>Edit consortium</h1>
-      <button type="button" onClick={() => { setEditing(null); setEditMessage(""); }}>Back to proposals</button>
+      <button type="button" onClick={() => { setScreen("review"); setEditMessage(""); }}>Back to review</button>
       {!selectedProposal ? <p>Proposal not found.</p> : <>
         <h2>{selectedProposal.title}</h2>
         <p>Edit the primary contact for partners managed by the demo user.</p>
@@ -165,7 +189,7 @@ function App() {
           <p><strong>Title:</strong> {proposal.title}{proposal.acronym && ` (${proposal.acronym})`}</p>
           <p><strong>Status:</strong> {proposal.status}</p>
           <h3>Consortium</h3>
-          <button type="button" onClick={() => setEditing(proposal.id)}>Edit consortium</button>
+          <button type="button" onClick={() => { setScreen("review"); setEditing(proposal.id); }}>Review consortium</button>
           {proposal.partners.length === 0 ? <p>No active partners.</p> : (
             <table>
               <thead><tr><th scope="col">Organization</th><th scope="col">Role</th><th scope="col">Status</th><th scope="col">Contact</th><th scope="col">Responsibility</th></tr></thead>
