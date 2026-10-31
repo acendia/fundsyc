@@ -36,7 +36,7 @@ Refresh the app after the commands finish. If your PostgreSQL setup uses a diffe
 
 After setting up the database, run `npm install` and then `npm run dev`. Open the local address printed by Vite. The API uses the local `fundsyc` database by default; set `DATABASE_URL` before starting the app if your connection needs a different address or credentials.
 
-The API is for local development and has no authentication yet.
+The API is for local development and has no authentication yet. Drizzle ORM maps existing tables in `db/tables.mjs` and handles proposal creation, proposal lookup, and contact updates. The remaining report queries use SQL. `db/schema.sql` remains the source of database constraints; the ORM mappings do not create or migrate tables.
 
 ## Copyright & Usage
 

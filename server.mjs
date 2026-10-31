@@ -1,10 +1,15 @@
 import express from "express";
 import pg from "pg";
 import { randomUUID } from "node:crypto";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { and, eq } from "drizzle-orm";
+import { users, organizations, proposals, partners, contacts, memberships, auditEvents } from "./db/tables.mjs";
 
 const app = express();
 app.use(express.json());
 const pool = new pg.Pool({ database: "fundsyc", ...(process.env.DATABASE_URL ? { connectionString: process.env.DATABASE_URL } : {}) });
+
+const db = drizzle(pool);
 
 // local demo user until sign in is added
 const demoUserId = "00000000-0000-4000-8000-000000000001";
@@ -18,19 +23,20 @@ app.post("/api/proposals", async (request, response) => {
   try {
     client = await pool.connect();
     await client.query("begin");
-    const user = await client.query("select id, display_name, email, email_key from users where id = $1 and status = 'active'", [demoUserId]);
-    if (!user.rowCount) {
+    const tx = drizzle(client);
+    const user = await tx.select().from(users).where(and(eq(users.id, demoUserId), eq(users.status, "active")));
+    if (!user.length) {
       await client.query("rollback");
       return response.status(400).json({ error: "Run the database seed to create the demo user first." });
     }
     const [proposalId, partnerId, organizationId, contactId, membershipId, auditId] = Array.from({ length: 6 }, () => randomUUID());
-    const actor = user.rows[0];
-    await client.query("insert into organizations (id, legal_name, organization_type, country_code, city) values ($1, $2, 'other', $3, $4)", [organizationId, organization.trim(), countryCode.trim().toUpperCase(), city?.trim() || null]);
-    await client.query("insert into proposals (id, title, acronym, coordinator_partner_id, created_by_user_id) values ($1, $2, $3, $4, $5)", [proposalId, title.trim(), acronym?.trim() || null, partnerId, demoUserId]);
-    await client.query("insert into consortium_partners (id, proposal_id, organization_id, status, primary_contact_id, joined_at) values ($1, $2, $3, 'active', $4, now())", [partnerId, proposalId, organizationId, contactId]);
-    await client.query("insert into partner_contacts (id, proposal_id, partner_id, full_name, email, email_key, user_id) values ($1, $2, $3, $4, $5, $6, $7)", [contactId, proposalId, partnerId, actor.display_name, actor.email, actor.email_key, demoUserId]);
-    await client.query("insert into proposal_memberships (id, proposal_id, partner_id, user_id, access_role, granted_by_user_id) values ($1, $2, $3, $4, 'coordinator_manager', $4)", [membershipId, proposalId, partnerId, demoUserId]);
-    await client.query("insert into audit_events (id, proposal_id, actor_user_id, action, entity_type, entity_id) values ($1, $2, $3, 'proposal.created', 'proposal', $2)", [auditId, proposalId, demoUserId]);
+    const actor = user[0];
+    await tx.insert(organizations).values({ id: organizationId, legalName: organization.trim(), organizationType: "other", countryCode: countryCode.trim().toUpperCase(), city: city?.trim() || null });
+    await tx.insert(proposals).values({ id: proposalId, title: title.trim(), acronym: acronym?.trim() || null, coordinatorPartnerId: partnerId, createdByUserId: demoUserId });
+    await tx.insert(partners).values({ id: partnerId, proposalId, organizationId, status: "active", primaryContactId: contactId, joinedAt: new Date() });
+    await tx.insert(contacts).values({ id: contactId, proposalId, partnerId, fullName: actor.displayName, email: actor.email, emailKey: actor.emailKey, userId: demoUserId });
+    await tx.insert(memberships).values({ id: membershipId, proposalId, partnerId, userId: demoUserId, accessRole: "coordinator_manager", grantedByUserId: demoUserId });
+    await tx.insert(auditEvents).values({ id: auditId, proposalId, actorUserId: demoUserId, action: "proposal.created", entityType: "proposal", entityId: proposalId });
     await client.query("commit");
     response.status(201).json({ id: proposalId });
   } catch (error) {
@@ -58,14 +64,17 @@ app.patch("/api/proposals/:proposalId/partners/:partnerId/contact", async (reque
     if (!['draft', 'in_preparation'].includes(proposal.rows[0].status)) { await client.query("rollback"); return response.status(409).json({ error: "This proposal is read-only." }); }
     const allowed = await client.query("select 1 from proposal_memberships m join users u on u.id = m.user_id where m.proposal_id = $1 and m.partner_id = $2 and m.user_id = $3 and m.status = 'active' and m.access_role in ('coordinator_manager', 'partner_admin') and u.status = 'active'", [request.params.proposalId, request.params.partnerId, demoUserId]);
     if (!allowed.rowCount) { await client.query("rollback"); return response.status(403).json({ error: "The demo user cannot edit this partner." }); }
-    const updated = await client.query("update partner_contacts c set full_name = $3, email = $4, email_key = $5, updated_at = now() from consortium_partners p where p.proposal_id = $1 and p.id = $2 and p.status = 'active' and c.id = p.primary_contact_id and c.partner_id = p.id and c.proposal_id = p.proposal_id returning c.id", [request.params.proposalId, request.params.partnerId, fullName.trim(), email.trim(), email.trim().toLowerCase()]);
-    if (!updated.rowCount) { await client.query("rollback"); return response.status(404).json({ error: "Primary contact not found." }); }
-    await client.query("insert into audit_events (id, proposal_id, actor_user_id, action, entity_type, entity_id) values ($1, $2, $3, 'contact.updated', 'partner_contact', $4)", [randomUUID(), request.params.proposalId, demoUserId, updated.rows[0].id]);
+    const tx = drizzle(client);
+    const partner = await tx.select({ contactId: partners.primaryContactId }).from(partners).where(and(eq(partners.proposalId, request.params.proposalId), eq(partners.id, request.params.partnerId), eq(partners.status, "active")));
+    if (!partner.length || !partner[0].contactId) { await client.query("rollback"); return response.status(404).json({ error: "Primary contact not found." }); }
+    const updated = await tx.update(contacts).set({ fullName: fullName.trim(), email: email.trim(), emailKey: email.trim().toLowerCase(), updatedAt: new Date() }).where(and(eq(contacts.id, partner[0].contactId), eq(contacts.partnerId, request.params.partnerId), eq(contacts.proposalId, request.params.proposalId))).returning({ id: contacts.id });
+    if (!updated.length) { await client.query("rollback"); return response.status(404).json({ error: "Primary contact not found." }); }
+    await tx.insert(auditEvents).values({ id: randomUUID(), proposalId: request.params.proposalId, actorUserId: demoUserId, action: "contact.updated", entityType: "partner_contact", entityId: updated[0].id });
     await client.query("commit");
     response.json({ ok: true });
   } catch (error) {
     if (client) await client.query("rollback").catch(() => {});
-    if (error.code === '23505') return response.status(409).json({ error: "That email is already used by another contact." });
+    if ((error.cause?.code ?? error.code) === '23505') return response.status(409).json({ error: "That email is already used by another contact." });
     console.error("contact update failed", error);
     response.status(500).json({ error: "Could not update the contact." });
   } finally { client?.release(); }
@@ -73,7 +82,7 @@ app.patch("/api/proposals/:proposalId/partners/:partnerId/contact", async (reque
 
 app.get("/api/proposals", async (_request, response) => {
   try {
-    const proposals = await pool.query("select id, title, acronym, status, coordinator_partner_id from proposals order by created_at, id");
+    const proposalRows = await db.select({ id: proposals.id, title: proposals.title, acronym: proposals.acronym, status: proposals.status, coordinator_partner_id: proposals.coordinatorPartnerId }).from(proposals).orderBy(proposals.createdAt, proposals.id);
     const partners = await pool.query(`
       select p.proposal_id, p.id, p.status, o.legal_name, o.city, o.country_code,
              c.full_name, c.email,
@@ -87,7 +96,7 @@ app.get("/api/proposals", async (_request, response) => {
       group by p.proposal_id, p.id, o.id, c.id
       order by o.legal_name, p.id
     `);
-    response.json(proposals.rows.map((proposal) => ({
+    response.json(proposalRows.map((proposal) => ({
       ...proposal,
       partners: partners.rows.filter((partner) => partner.proposal_id === proposal.id),
     })));
