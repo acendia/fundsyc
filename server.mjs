@@ -5,11 +5,18 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { and, eq } from "drizzle-orm";
 import { users, organizations, proposals, partners, contacts, memberships, auditEvents } from "./db/tables.mjs";
 
+export function createApp(getConnectionString) {
 const app = express();
 app.use(express.json());
-const pool = new pg.Pool({ database: "fundsyc", ...(process.env.DATABASE_URL ? { connectionString: process.env.DATABASE_URL } : {}) });
 
-const db = drizzle(pool);
+// each request owns its connections, including in the worker runtime
+app.use((request, response, next) => {
+  const connectionString = getConnectionString();
+  const pool = new pg.Pool(connectionString ? { connectionString } : { database: "fundsyc" });
+  request.database = pool;
+  response.on("finish", () => { void pool.end().catch((error) => console.error("database cleanup failed", error)); });
+  next();
+});
 
 // local demo user until sign in is added
 const demoUserId = "00000000-0000-4000-8000-000000000001";
@@ -21,7 +28,7 @@ app.post("/api/proposals", async (request, response) => {
   }
   let client;
   try {
-    client = await pool.connect();
+    client = await request.database.connect();
     await client.query("begin");
     const tx = drizzle(client);
     const user = await tx.select().from(users).where(and(eq(users.id, demoUserId), eq(users.status, "active")));
@@ -57,7 +64,7 @@ app.patch("/api/proposals/:proposalId/partners/:partnerId/contact", async (reque
   if (!uuid.test(request.params.proposalId) || !uuid.test(request.params.partnerId)) return response.status(404).json({ error: "Partner not found." });
   let client;
   try {
-    client = await pool.connect();
+    client = await request.database.connect();
     await client.query("begin");
     const proposal = await client.query("select status from proposals where id = $1 for update", [request.params.proposalId]);
     if (!proposal.rowCount) { await client.query("rollback"); return response.status(404).json({ error: "Proposal not found." }); }
@@ -80,8 +87,10 @@ app.patch("/api/proposals/:proposalId/partners/:partnerId/contact", async (reque
   } finally { client?.release(); }
 });
 
-app.get("/api/proposals", async (_request, response) => {
+app.get("/api/proposals", async (request, response) => {
   try {
+    const pool = request.database;
+    const db = drizzle(pool);
     const proposalRows = await db.select({ id: proposals.id, title: proposals.title, acronym: proposals.acronym, status: proposals.status, coordinator_partner_id: proposals.coordinatorPartnerId }).from(proposals).orderBy(proposals.createdAt, proposals.id);
     const partners = await pool.query(`
       select p.proposal_id, p.id, p.status, o.legal_name, o.city, o.country_code,
@@ -106,8 +115,9 @@ app.get("/api/proposals", async (_request, response) => {
   }
 });
 
-app.get("/api/example-data", async (_request, response) => {
+app.get("/api/example-data", async (request, response) => {
   try {
+    const pool = request.database;
     const queries = {
       users: "select display_name, email, status from users order by display_name, id",
       organizations: "select legal_name, short_name, organization_type, city, country_code from organizations order by legal_name, id",
@@ -128,4 +138,5 @@ app.get("/api/example-data", async (_request, response) => {
   }
 });
 
-app.listen(3001, "127.0.0.1", () => console.log("api running at http://127.0.0.1:3001"));
+return app;
+}
