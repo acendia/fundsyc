@@ -1,25 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { createRoot } from "react-dom/client";
-
-type Partner = {
-  id: string;
-  status: string;
-  legal_name: string;
-  city: string | null;
-  country_code: string;
-  full_name: string | null;
-  email: string | null;
-  responsibilities: string[];
-};
-
-type Proposal = {
-  id: string;
-  title: string;
-  acronym: string | null;
-  status: string;
-  coordinator_partner_id: string;
-  partners: Partner[];
-};
+import "./sections.css";
+import type { Proposal } from "./api-types";
 
 type ExampleData = Record<string, Record<string, string | null>[]>;
 
@@ -48,6 +30,36 @@ function App() {
   const [screen, setScreen] = useState<"review" | "edit">("review");
   const [editMessage, setEditMessage] = useState("");
   const [editingSave, setEditingSave] = useState(false);
+  const [demoEnabled, setDemoEnabled] = useState(false);
+  const [demoInvite, setDemoInvite] = useState<{ token: string; recipient: string } | null>(null);
+  const [inviteMessage, setInviteMessage] = useState("");
+  const [inviteBusy, setInviteBusy] = useState(false);
+
+  async function inviteOrganization(event: FormEvent<HTMLFormElement>, proposalId: string) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    setInviteBusy(true); setInviteMessage("");
+    try {
+      const response = await fetch("/api/demo/invitations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...Object.fromEntries(new FormData(form)), proposalId }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not invite organization.");
+      setDemoInvite(result); form.reset(); setInviteMessage("Invitation created for the demo partner. No email was sent."); setRevision((value) => value + 1);
+    } catch (error) { setInviteMessage(error instanceof Error ? error.message : "Could not invite organization."); }
+    finally { setInviteBusy(false); }
+  }
+
+  async function resolveInvitation(action: "accept" | "decline") {
+    if (!demoInvite) return;
+    setInviteBusy(true); setInviteMessage("");
+    try {
+      const response = await fetch("/api/demo/invitations/resolve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: demoInvite.token, action }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not resolve invitation.");
+      setDemoInvite(null); setInviteMessage(`Invitation ${result.status}.`); setRevision((value) => value + 1);
+    } catch (error) { setInviteMessage(error instanceof Error ? error.message : "Could not resolve invitation."); }
+    finally { setInviteBusy(false); }
+  }
+
 
   async function saveContact(event: FormEvent<HTMLFormElement>, proposalId: string, partnerId: string) {
     event.preventDefault();
@@ -95,7 +107,11 @@ function App() {
     }
   }
   
-  // fetch proposals from the API on component mount
+  useEffect(() => {
+    fetch("/api/demo/config").then((response) => response.ok ? response.json() : null).then((result) => setDemoEnabled(result?.enabled === true)).catch(() => setDemoEnabled(false));
+  }, []);
+
+  // fetch proposals from the api on component mount
   useEffect(() => {
     const controller = new AbortController();
     fetch("/api/proposals", { signal: controller.signal })
@@ -124,10 +140,23 @@ function App() {
         <h2>{selectedProposal.title}</h2>
         <p><strong>Status:</strong> {selectedProposal.status}</p>
         <button type="button" onClick={() => { setScreen("edit"); setEditMessage(""); }}>Edit consortium</button>
+        {demoEnabled && <section className="section section-invite">
+          <h3>Invite an organization</h3>
+          <p>Local demo: each invitation uses a different example recipient. No email is sent.</p>
+          <form onSubmit={(event) => inviteOrganization(event, selectedProposal.id)}>
+            <p><label>Organization <input name="organization" required /></label></p>
+            <p><label>Country code <input name="countryCode" required pattern="[A-Za-z]{2}" maxLength={2} /></label></p>
+            <p><label>City <input name="city" /></label></p>
+            <button disabled={inviteBusy || !["draft", "in_preparation"].includes(selectedProposal.status)}>Create invitation</button>
+          </form>
+          {demoInvite && <div><p>Demo inbox for {demoInvite.recipient}</p><button type="button" disabled={inviteBusy} onClick={() => resolveInvitation("accept")}>Accept</button> <button type="button" disabled={inviteBusy} onClick={() => resolveInvitation("decline")}>Decline</button></div>}
+          {inviteMessage && <p role="status">{inviteMessage}</p>}
+          <p>The demo inbox clears when you refresh this page.</p>
+        </section>}
         <h3>Partners</h3>
         {selectedProposal.partners.length === 0 && <p>No active partners.</p>}
         {selectedProposal.partners.map((partner) => (
-          <section key={partner.id}>
+          <section className="section section-partner" key={partner.id}>
             <h4>{partner.legal_name}</h4>
             <p><strong>Role:</strong> {partner.id === selectedProposal.coordinator_partner_id ? "Coordinator" : "Beneficiary"}</p>
             <p><strong>Status:</strong> {partner.status}</p>
@@ -147,7 +176,7 @@ function App() {
         <h2>{selectedProposal.title}</h2>
         <p>Edit the primary contact for partners managed by the demo user.</p>
         {selectedProposal.partners.map((partner) => (
-          <section key={partner.id}>
+          <section className="section section-partner" key={partner.id}>
             <h3>{partner.legal_name}</h3>
             <p>{partner.id === selectedProposal.coordinator_partner_id ? "Coordinator" : "Beneficiary"} — {partner.status}</p>
             <form onSubmit={(event) => saveContact(event, selectedProposal.id, partner.id)}>
@@ -166,7 +195,7 @@ function App() {
   return (
     <main>
       <h1>FundSyc</h1>
-      <section>
+      <section className="section section-create">
         <h2>Create a proposal</h2>
         <p>The seeded demo user will be the coordinator manager and primary contact.</p>
         <form onSubmit={createProposal}>
@@ -184,7 +213,7 @@ function App() {
       {!error && proposals === null && <p>Loading...</p>}
       {proposals?.length === 0 && <p>No proposals found. Run the database seed to add an example.</p>}
       {proposals?.map((proposal) => (
-        <section key={proposal.id}>
+        <section className="section section-proposal" key={proposal.id}>
           <h2>Proposal</h2>
           <p><strong>Title:</strong> {proposal.title}{proposal.acronym && ` (${proposal.acronym})`}</p>
           <p><strong>Status:</strong> {proposal.status}</p>
@@ -209,7 +238,7 @@ function App() {
         </section>
       ))}
       {exampleData && (
-        <section>
+        <section className="section section-records">
           <h2>All database records</h2>
           {sections.map(([key, title]) => {
             const rows = exampleData[key] ?? [];

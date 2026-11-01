@@ -4,7 +4,7 @@
     ('00000000-0000-4000-8000-000000000001', 'demo:coordinator', 'researcher@example.org', 'researcher@example.org', 'Example Researcher', now())
   on conflict (id) do nothing;
   insert into organizations (id, legal_name, organization_type, country_code, city) values
-    ('10000000-0000-4000-8000-000000000001', 'Example University', 'university', 'GR', 'Athens')
+    ('10000000-0000-4000-8000-000000000001', 'University of Athens', 'university', 'GR', 'Athens')
   on conflict (id) do nothing;
   insert into proposals (id, title, acronym, coordinator_partner_id, created_by_user_id) values
     ('20000000-0000-4000-8000-000000000001', 'Collaborative Research Proposal', 'CRP', '30000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001')
@@ -24,4 +24,24 @@
   insert into partner_responsibilities (proposal_id, partner_id, responsibility_id) values
     ('20000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000001')
   on conflict do nothing;
+
+  -- additional example partners
+  update organizations set legal_name = 'University of Athens', updated_at = now()
+  where id = '10000000-0000-4000-8000-000000000001' and legal_name = 'Example University';
+
+  insert into organizations (id, legal_name, organization_type, country_code, city) values
+    ('10000000-0000-4000-8000-000000000002', 'Harokopio University', 'university', 'GR', 'Athens'),
+    ('10000000-0000-4000-8000-000000000003', 'UCLA', 'university', 'US', 'Los Angeles')
+  on conflict (id) do nothing;
+
+  insert into consortium_partners (id, proposal_id, organization_id, status, primary_contact_id, joined_at) values
+    ('30000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000002', 'active', '40000000-0000-4000-8000-000000000002', now()),
+    ('30000000-0000-4000-8000-000000000003', '20000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000003', 'active', '40000000-0000-4000-8000-000000000003', now())
+  on conflict (id) do nothing;
+
+  insert into partner_contacts (id, proposal_id, partner_id, full_name, email, email_key) values
+    ('40000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000002', 'Example Contact', 'harokopio@example.org', 'harokopio@example.org'),
+    ('40000000-0000-4000-8000-000000000003', '20000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000003', 'Example Contact', 'ucla@example.org', 'ucla@example.org')
+  on conflict (id) do nothing;
+
   commit;

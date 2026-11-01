@@ -1,11 +1,12 @@
 import express from "express";
+import { addDemoInvitations } from "./invitations.mjs";
 import pg from "pg";
 import { randomUUID } from "node:crypto";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { and, eq } from "drizzle-orm";
 import { users, organizations, proposals, partners, contacts, memberships, auditEvents } from "../db/tables.mjs";
 
-export function createApp(getConnectionString) {
+export function createApp(getConnectionString, { demoInvitations = false } = {}) {
 const app = express();
 app.use(express.json());
 
@@ -138,5 +139,6 @@ app.get("/api/example-data", async (request, response) => {
   }
 });
 
+if (demoInvitations) addDemoInvitations(app);
 return app;
 }

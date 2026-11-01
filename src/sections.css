@@ -1,0 +1,16 @@
+/* colors help separate the main sections */
+.section {
+  border-left: 5px solid;
+  padding: 0.5rem 1rem;
+  margin: 1rem 0;
+  color: #18212f;
+}
+
+.section-create { background: #eaf2ff; border-color: #245ca8; }
+.section-proposal { background: #edf7f2; border-color: #26714b; }
+.section-invite { background: #fff5df; border-color: #946000; }
+.section-partner { background: #f2edfb; border-color: #6a4695; }
+.section-records { background: #f2f4f6; border-color: #526477; }
+
+[role="alert"] { color: #9b1c1c; }
+[role="status"] { color: #174f38; }
