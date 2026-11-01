@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { httpServerHandler } from "cloudflare:node";
-import { createApp } from "./server.mjs";
+import { createApp } from "./app.mjs";
 
 const app = createApp(() => env.HYPERDRIVE.connectionString);
 app.listen(3001);

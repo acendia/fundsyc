@@ -3,7 +3,7 @@ import pg from "pg";
 import { randomUUID } from "node:crypto";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { and, eq } from "drizzle-orm";
-import { users, organizations, proposals, partners, contacts, memberships, auditEvents } from "./db/tables.mjs";
+import { users, organizations, proposals, partners, contacts, memberships, auditEvents } from "../db/tables.mjs";
 
 export function createApp(getConnectionString) {
 const app = express();
