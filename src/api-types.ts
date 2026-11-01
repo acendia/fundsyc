@@ -6,6 +6,13 @@ export type Contact = {
   phone: string | null;
 };
 
+export type Member = {
+  id: string;
+  display_name: string;
+  email: string;
+  access_role: string;
+};
+
 export type Partner = {
   id: string;
   status: string;
@@ -18,6 +25,8 @@ export type Partner = {
   contacts: Contact[];
   primary_contact_id: string | null;
   can_manage_contacts: boolean;
+  can_withdraw: boolean;
+  members: Member[];
 };
 
 export type Responsibility = {

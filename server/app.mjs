@@ -1,5 +1,6 @@
 import express from "express";
 import { addResponsibilityRoutes } from "./responsibilities.mjs";
+import { addPartnerRoutes } from "./partners.mjs";
 import { addContactRoutes } from "./contacts.mjs";
 import { addDemoInvitations } from "./invitations.mjs";
 import pg from "pg";
@@ -113,6 +114,7 @@ app.get("/api/proposals", async (request, response) => {
     const managedIds = new Set(managed.rows.map((row) => row.partner_id));
     const responsibilityRows = await pool.query("select r.id, r.proposal_id, r.title, r.description, coalesce(array_agg(pr.partner_id) filter (where pr.partner_id is not null), '{}') as partner_ids from responsibilities r left join partner_responsibilities pr on pr.responsibility_id=r.id and pr.proposal_id=r.proposal_id group by r.id order by r.sort_order, r.title, r.id");
     const coordinatorRows = await pool.query("select m.proposal_id from proposal_memberships m join proposals p on p.id=m.proposal_id and p.coordinator_partner_id=m.partner_id join users u on u.id=m.user_id where m.user_id=$1 and m.status='active' and m.access_role='coordinator_manager' and u.status='active'", [demoUserId]);
+    const memberRows = await pool.query("select m.id, m.proposal_id, m.partner_id, m.user_id, m.access_role, u.display_name, u.email from proposal_memberships m join users u on u.id=m.user_id where m.status='active' order by u.display_name, m.id");
     const coordinatorIds = new Set(coordinatorRows.rows.map((row) => row.proposal_id));
     response.json(proposalRows.map((proposal) => ({
       ...proposal,
@@ -123,6 +125,8 @@ app.get("/api/proposals", async (request, response) => {
         contacts: contactRows.rows.filter((contact) => contact.partner_id === partner.id && contact.proposal_id === proposal.id),
         primary_contact_id: partner.primary_contact_id,
         can_manage_contacts: managedIds.has(partner.id),
+        can_withdraw: memberRows.rows.some((m) => m.partner_id === partner.id && m.user_id === demoUserId && m.access_role === "partner_admin"),
+        members: memberRows.rows.filter((m) => m.partner_id === partner.id && m.proposal_id === proposal.id),
       })),
     })));
   } catch (error) {
@@ -154,6 +158,7 @@ app.get("/api/example-data", async (request, response) => {
   }
 });
 
+addPartnerRoutes(app);
 addContactRoutes(app);
 addResponsibilityRoutes(app);
 if (demoInvitations) addDemoInvitations(app);

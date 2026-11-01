@@ -35,6 +35,8 @@ function App() {
   const [demoInvite, setDemoInvite] = useState<{ token: string; recipient: string } | null>(null);
   const [inviteMessage, setInviteMessage] = useState("");
   const [inviteBusy, setInviteBusy] = useState(false);
+  const [partnerBusy, setPartnerBusy] = useState(false);
+  const [partnerMessage, setPartnerMessage] = useState("");
   const [responsibilityBusy, setResponsibilityBusy] = useState(false);
   const [responsibilityMessage, setResponsibilityMessage] = useState("");
 
@@ -110,6 +112,20 @@ function App() {
     event.preventDefault();
     const form = event.currentTarget;
     if (await changeResponsibility(proposalId, "POST", undefined, undefined, Object.fromEntries(new FormData(form)))) form.reset();
+  }
+
+  async function changePartner(proposalId: string, partnerId: string, body: object, membershipId?: string) {
+    setPartnerBusy(true);
+    setPartnerMessage("");
+    try {
+      const path = `/api/proposals/${proposalId}/partners/${partnerId}/${membershipId ? `memberships/${membershipId}` : "status"}`;
+      const response = await fetch(path, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not save changes.");
+      setPartnerMessage("Changes saved.");
+      setRevision((current) => current + 1);
+    } catch (error) { setPartnerMessage(error instanceof Error ? error.message : "Could not save changes."); }
+    finally { setPartnerBusy(false); }
   }
 
   async function createProposal(event: FormEvent<HTMLFormElement>) {
@@ -244,6 +260,13 @@ function App() {
           return <section className="section section-partner" key={partner.id}>
             <h3>{partner.legal_name}</h3>
             <p>{partner.id === selectedProposal.coordinator_partner_id ? "Coordinator" : "Beneficiary"} — {partner.status}</p>
+            <h4>Proposal access</h4>
+            {partner.members.length === 0 && <p>No members with access.</p>}
+            {partner.members.map((member) => <p key={member.id}>{member.display_name} ({member.email}) — {selectedProposal.can_manage_responsibilities && partner.id !== selectedProposal.coordinator_partner_id && ["draft", "in_preparation"].includes(selectedProposal.status) ? <select aria-label={`Role for ${member.display_name}`} value={member.access_role} disabled={partnerBusy} onChange={(event) => void changePartner(selectedProposal.id, partner.id, { role: event.target.value }, member.id)}><option value="partner_admin">Partner admin</option><option value="contributor">Contributor</option><option value="viewer">Viewer</option></select> : member.access_role}</p>)}
+            {["draft", "in_preparation"].includes(selectedProposal.status) && partner.id !== selectedProposal.coordinator_partner_id && <>
+              {selectedProposal.can_manage_responsibilities && <button type="button" disabled={partnerBusy} onClick={() => { if (window.confirm(`Remove ${partner.legal_name}? Its members will lose proposal access.`)) void changePartner(selectedProposal.id, partner.id, { status: "removed" }); }}>Remove partner</button>}
+              {partner.can_withdraw && <button type="button" disabled={partnerBusy} onClick={() => { if (window.confirm(`Withdraw ${partner.legal_name}? Its members will lose proposal access.`)) void changePartner(selectedProposal.id, partner.id, { status: "withdrawn" }); }}>Withdraw partner</button>}
+            </>}
             {!partner.can_manage_contacts && <p>The demo user cannot manage this partner's contacts.</p>}
             {partner.can_manage_contacts && !editable && <p>This proposal is read-only.</p>}
             {partner.contacts.map((contact) => <div key={contact.id}>
@@ -261,6 +284,7 @@ function App() {
         {selectedProposal.partners.length === 0 && <p>No active partners.</p>}
       </>}
       {editMessage && <p role="status">{editMessage}</p>}
+      {partnerMessage && <p role="status">{partnerMessage}</p>}
     </main>
   );
 
