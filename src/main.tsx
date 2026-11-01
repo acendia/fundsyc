@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { createRoot } from "react-dom/client";
 import "./sections.css";
-import type { Proposal } from "./api-types";
+import type { Contact, Proposal } from "./api-types";
 
 type ExampleData = Record<string, Record<string, string | null>[]>;
 
@@ -30,10 +30,13 @@ function App() {
   const [screen, setScreen] = useState<"review" | "edit">("review");
   const [editMessage, setEditMessage] = useState("");
   const [editingSave, setEditingSave] = useState(false);
+  const [editingContact, setEditingContact] = useState<string | null>(null);
   const [demoEnabled, setDemoEnabled] = useState(false);
   const [demoInvite, setDemoInvite] = useState<{ token: string; recipient: string } | null>(null);
   const [inviteMessage, setInviteMessage] = useState("");
   const [inviteBusy, setInviteBusy] = useState(false);
+  const [responsibilityBusy, setResponsibilityBusy] = useState(false);
+  const [responsibilityMessage, setResponsibilityMessage] = useState("");
 
   async function inviteOrganization(event: FormEvent<HTMLFormElement>, proposalId: string) {
     event.preventDefault();
@@ -61,22 +64,52 @@ function App() {
   }
 
 
-  async function saveContact(event: FormEvent<HTMLFormElement>, proposalId: string, partnerId: string) {
-    event.preventDefault();
-    const data = Object.fromEntries(new FormData(event.currentTarget));
+  async function changeContact(proposalId: string, partnerId: string, method: string, contactId?: string, data?: object, primary = false) {
     setEditingSave(true);
     setEditMessage("");
     try {
-      const response = await fetch(`/api/proposals/${proposalId}/partners/${partnerId}/contact`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
-      });
+      const path = `/api/proposals/${proposalId}/partners/${partnerId}/contacts${contactId ? `/${contactId}` : ""}${primary ? "/primary" : ""}`;
+      const response = await fetch(path, { method, headers: { "Content-Type": "application/json" }, body: data ? JSON.stringify(data) : undefined });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Could not save contact.");
-      setEditMessage("Contact saved.");
+      setEditingContact(null);
+      setEditMessage("Contact changes saved.");
       setRevision((current) => current + 1);
+      return true;
     } catch (error) {
       setEditMessage(error instanceof Error ? error.message : "Could not save contact.");
+      return false;
     } finally { setEditingSave(false); }
+  }
+
+  async function submitContact(event: FormEvent<HTMLFormElement>, proposalId: string, partnerId: string, contactId?: string) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const saved = await changeContact(proposalId, partnerId, contactId ? "PATCH" : "POST", contactId, Object.fromEntries(new FormData(form)));
+    if (saved) form.reset();
+  }
+
+  async function changeResponsibility(proposalId: string, method: string, responsibilityId?: string, partnerId?: string, data?: object) {
+    setResponsibilityBusy(true);
+    setResponsibilityMessage("");
+    try {
+      const path = `/api/proposals/${proposalId}/responsibilities${responsibilityId && partnerId ? `/${responsibilityId}/partners/${partnerId}` : ""}`;
+      const response = await fetch(path, { method, headers: { "Content-Type": "application/json" }, body: data ? JSON.stringify(data) : undefined });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not save responsibility.");
+      setResponsibilityMessage("Responsibility saved.");
+      setRevision((current) => current + 1);
+      return true;
+    } catch (error) {
+      setResponsibilityMessage(error instanceof Error ? error.message : "Could not save responsibility.");
+      return false;
+    } finally { setResponsibilityBusy(false); }
+  }
+
+  async function createResponsibility(event: FormEvent<HTMLFormElement>, proposalId: string) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    if (await changeResponsibility(proposalId, "POST", undefined, undefined, Object.fromEntries(new FormData(form)))) form.reset();
   }
 
   async function createProposal(event: FormEvent<HTMLFormElement>) {
@@ -163,6 +196,8 @@ function App() {
             <p><strong>Location:</strong> {[partner.city, partner.country_code].filter(Boolean).join(", ")}</p>
             <p><strong>Primary contact:</strong> {partner.full_name ? `${partner.full_name} (${partner.email})` : "Not listed"}</p>
             <p><strong>Responsibilities:</strong> {partner.responsibilities.join(", ") || "None listed"}</p>
+            <p><strong>Contacts:</strong></p>
+            <ul>{partner.contacts.map((contact) => <li key={contact.id}>{contact.full_name} ({contact.email}){contact.id === partner.primary_contact_id ? " — primary" : ""}{contact.job_title ? ` — ${contact.job_title}` : ""}{contact.phone ? ` — ${contact.phone}` : ""}</li>)}</ul>
           </section>
         ))}
       </>}
@@ -174,18 +209,55 @@ function App() {
       <button type="button" onClick={() => { setScreen("review"); setEditMessage(""); }}>Back to review</button>
       {!selectedProposal ? <p>Proposal not found.</p> : <>
         <h2>{selectedProposal.title}</h2>
-        <p>Edit the primary contact for partners managed by the demo user.</p>
-        {selectedProposal.partners.map((partner) => (
-          <section className="section section-partner" key={partner.id}>
+        <section className="section section-partner">
+          <h3>Responsibilities</h3>
+          <p>Create responsibilities and choose which partners are responsible for each one.</p>
+          {selectedProposal.responsibilities.length === 0 && <p>No responsibilities yet.</p>}
+          {selectedProposal.responsibilities.map((responsibility) => <div key={responsibility.id}>
+            <h4>{responsibility.title}</h4>
+            {responsibility.description && <p>{responsibility.description}</p>}
+            {selectedProposal.partners.map((partner) => <p key={partner.id}><label>
+              <input type="checkbox" checked={responsibility.partner_ids.includes(partner.id)} disabled={responsibilityBusy || !selectedProposal.can_manage_responsibilities || !["draft", "in_preparation"].includes(selectedProposal.status)} onChange={(event) => void changeResponsibility(selectedProposal.id, event.target.checked ? "PUT" : "DELETE", responsibility.id, partner.id)} /> {partner.legal_name}
+            </label></p>)}
+          </div>)}
+          {selectedProposal.can_manage_responsibilities && ["draft", "in_preparation"].includes(selectedProposal.status) ? <form onSubmit={(event) => createResponsibility(event, selectedProposal.id)}>
+            <h4>Add a responsibility</h4>
+            <p><label>Title <input name="title" required /></label></p>
+            <p><label>Description <input name="description" /></label></p>
+            <button disabled={responsibilityBusy}>Create responsibility</button>
+          </form> : <p>Responsibilities can be changed by the coordinator while the proposal is editable.</p>}
+          {responsibilityMessage && <p role="status">{responsibilityMessage}</p>}
+        </section>
+        <p>Manage contacts for your organization. Adding a contact does not give them access to the proposal.</p>
+        {selectedProposal.partners.map((partner) => {
+          const editable = partner.can_manage_contacts && ["draft", "in_preparation"].includes(selectedProposal.status);
+          const contactForm = (contact?: Contact) => (
+            <form key={contact?.id ?? "new"} onSubmit={(event) => submitContact(event, selectedProposal.id, partner.id, contact?.id)}>
+              <p><label>Name <input name="fullName" defaultValue={contact?.full_name ?? ""} required /></label></p>
+              <p><label>Email <input name="email" type="email" defaultValue={contact?.email ?? ""} required /></label></p>
+              <p><label>Job title <input name="jobTitle" defaultValue={contact?.job_title ?? ""} /></label></p>
+              <p><label>Phone <input name="phone" defaultValue={contact?.phone ?? ""} /></label></p>
+              <button disabled={editingSave}>{contact ? "Save contact" : "Add contact"}</button>
+              {contact && <button type="button" onClick={() => setEditingContact(null)}>Cancel</button>}
+            </form>
+          );
+          return <section className="section section-partner" key={partner.id}>
             <h3>{partner.legal_name}</h3>
             <p>{partner.id === selectedProposal.coordinator_partner_id ? "Coordinator" : "Beneficiary"} — {partner.status}</p>
-            <form onSubmit={(event) => saveContact(event, selectedProposal.id, partner.id)}>
-              <p><label>Contact name <input name="fullName" defaultValue={partner.full_name ?? ""} required /></label></p>
-              <p><label>Contact email <input name="email" type="email" defaultValue={partner.email ?? ""} required /></label></p>
-              <button disabled={editingSave || !["draft", "in_preparation"].includes(selectedProposal.status)}>Save contact</button>
-            </form>
-          </section>
-        ))}
+            {!partner.can_manage_contacts && <p>The demo user cannot manage this partner's contacts.</p>}
+            {partner.can_manage_contacts && !editable && <p>This proposal is read-only.</p>}
+            {partner.contacts.map((contact) => <div key={contact.id}>
+              {editingContact === contact.id && editable ? contactForm(contact) : <>
+                <p>{contact.full_name} ({contact.email}){contact.id === partner.primary_contact_id ? " — primary" : ""}{contact.job_title ? ` — ${contact.job_title}` : ""}{contact.phone ? ` — ${contact.phone}` : ""}</p>
+                {editable && <p>
+                  <button type="button" disabled={editingSave} onClick={() => setEditingContact(contact.id)}>Edit</button>{" "}
+                  {contact.id !== partner.primary_contact_id && <><button type="button" disabled={editingSave} onClick={() => changeContact(selectedProposal.id, partner.id, "PATCH", contact.id, undefined, true)}>Make primary</button>{" "}<button type="button" disabled={editingSave} onClick={() => { if (window.confirm(`Remove ${contact.full_name} from contacts?`)) void changeContact(selectedProposal.id, partner.id, "DELETE", contact.id); }}>Remove</button></>}
+                </p>}
+              </>}
+            </div>)}
+            {editable && <><h4>Add a contact</h4>{contactForm()}</>}
+          </section>;
+        })}
         {selectedProposal.partners.length === 0 && <p>No active partners.</p>}
       </>}
       {editMessage && <p role="status">{editMessage}</p>}

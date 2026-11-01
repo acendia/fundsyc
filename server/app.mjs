@@ -1,4 +1,6 @@
 import express from "express";
+import { addResponsibilityRoutes } from "./responsibilities.mjs";
+import { addContactRoutes } from "./contacts.mjs";
 import { addDemoInvitations } from "./invitations.mjs";
 import pg from "pg";
 import { randomUUID } from "node:crypto";
@@ -94,7 +96,7 @@ app.get("/api/proposals", async (request, response) => {
     const db = drizzle(pool);
     const proposalRows = await db.select({ id: proposals.id, title: proposals.title, acronym: proposals.acronym, status: proposals.status, coordinator_partner_id: proposals.coordinatorPartnerId }).from(proposals).orderBy(proposals.createdAt, proposals.id);
     const partners = await pool.query(`
-      select p.proposal_id, p.id, p.status, o.legal_name, o.city, o.country_code,
+      select p.proposal_id, p.id, p.status, p.primary_contact_id, o.legal_name, o.city, o.country_code,
              c.full_name, c.email,
              coalesce(array_agg(r.title order by pr.sort_order, r.id) filter (where r.id is not null), '{}') as responsibilities
       from consortium_partners p
@@ -106,9 +108,22 @@ app.get("/api/proposals", async (request, response) => {
       group by p.proposal_id, p.id, o.id, c.id
       order by o.legal_name, p.id
     `);
+    const contactRows = await pool.query("select id, proposal_id, partner_id, full_name, email, job_title, phone from partner_contacts order by full_name, id");
+    const managed = await pool.query("select partner_id from proposal_memberships m join users u on u.id=m.user_id where m.user_id=$1 and m.status='active' and m.access_role in ('coordinator_manager','partner_admin') and u.status='active'", [demoUserId]);
+    const managedIds = new Set(managed.rows.map((row) => row.partner_id));
+    const responsibilityRows = await pool.query("select r.id, r.proposal_id, r.title, r.description, coalesce(array_agg(pr.partner_id) filter (where pr.partner_id is not null), '{}') as partner_ids from responsibilities r left join partner_responsibilities pr on pr.responsibility_id=r.id and pr.proposal_id=r.proposal_id group by r.id order by r.sort_order, r.title, r.id");
+    const coordinatorRows = await pool.query("select m.proposal_id from proposal_memberships m join proposals p on p.id=m.proposal_id and p.coordinator_partner_id=m.partner_id join users u on u.id=m.user_id where m.user_id=$1 and m.status='active' and m.access_role='coordinator_manager' and u.status='active'", [demoUserId]);
+    const coordinatorIds = new Set(coordinatorRows.rows.map((row) => row.proposal_id));
     response.json(proposalRows.map((proposal) => ({
       ...proposal,
-      partners: partners.rows.filter((partner) => partner.proposal_id === proposal.id),
+      responsibilities: responsibilityRows.rows.filter((row) => row.proposal_id === proposal.id),
+      can_manage_responsibilities: coordinatorIds.has(proposal.id),
+      partners: partners.rows.filter((partner) => partner.proposal_id === proposal.id).map((partner) => ({
+        ...partner,
+        contacts: contactRows.rows.filter((contact) => contact.partner_id === partner.id && contact.proposal_id === proposal.id),
+        primary_contact_id: partner.primary_contact_id,
+        can_manage_contacts: managedIds.has(partner.id),
+      })),
     })));
   } catch (error) {
     console.error("database query failed", error);
@@ -139,6 +154,8 @@ app.get("/api/example-data", async (request, response) => {
   }
 });
 
+addContactRoutes(app);
+addResponsibilityRoutes(app);
 if (demoInvitations) addDemoInvitations(app);
 return app;
 }
