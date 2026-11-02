@@ -2,14 +2,14 @@ import express from "express";
 import { addResponsibilityRoutes } from "./responsibilities.mjs";
 import { addPartnerRoutes } from "./partners.mjs";
 import { addContactRoutes } from "./contacts.mjs";
-import { addDemoInvitations } from "./invitations.mjs";
+import { addInvitations } from "./invitations.mjs";
 import pg from "pg";
 import { randomUUID } from "node:crypto";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { and, eq } from "drizzle-orm";
 import { users, organizations, proposals, partners, contacts, memberships, auditEvents } from "../db/tables.mjs";
 
-export function createApp(getConnectionString, { demoInvitations = false } = {}) {
+export function createApp(getConnectionString, { authUrl, authKey } = {}) {
 const app = express();
 app.use(express.json());
 
@@ -22,8 +22,26 @@ app.use((request, response, next) => {
   next();
 });
 
-// local demo user until sign in is added
-const demoUserId = "00000000-0000-4000-8000-000000000001";
+app.get("/api/auth/config", (_request, response) => {
+  if (!authUrl || !authKey) return response.status(503).json({ error: "Sign-in is not configured." });
+  response.json({ url: authUrl, key: authKey });
+});
+
+app.use("/api", async (request, response, next) => {
+  const token = request.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
+  if (!authUrl || !authKey) return response.status(503).json({ error: "Sign-in is not configured." });
+  if (!token) return response.status(401).json({ error: "Sign in required." });
+  try {
+    const verified = await fetch(`${authUrl}/auth/v1/user`, { headers: { apikey: authKey, authorization: `Bearer ${token}` } });
+    if (!verified.ok) return response.status(401).json({ error: "Invalid session." });
+    const user = await verified.json();
+    const result = await request.database.query("select id from users where auth_subject=$1 and status='active'", [user.id]);
+    if (!result.rowCount) return response.status(403).json({ error: "No application account found." });
+    request.userId = result.rows[0].id;
+    request.verifiedEmail = user.email_confirmed_at && typeof user.email === "string" ? user.email.trim().toLowerCase() : null;
+    next();
+  } catch (error) { console.error("authentication failed", error); response.status(503).json({ error: "Sign-in service unavailable." }); }
+});
 
 app.post("/api/proposals", async (request, response) => {
   const { title, acronym, organization, countryCode, city } = request.body ?? {};
@@ -35,7 +53,7 @@ app.post("/api/proposals", async (request, response) => {
     client = await request.database.connect();
     await client.query("begin");
     const tx = drizzle(client);
-    const user = await tx.select().from(users).where(and(eq(users.id, demoUserId), eq(users.status, "active")));
+    const user = await tx.select().from(users).where(and(eq(users.id, request.userId), eq(users.status, "active")));
     if (!user.length) {
       await client.query("rollback");
       return response.status(400).json({ error: "Run the database seed to create the demo user first." });
@@ -43,11 +61,11 @@ app.post("/api/proposals", async (request, response) => {
     const [proposalId, partnerId, organizationId, contactId, membershipId, auditId] = Array.from({ length: 6 }, () => randomUUID());
     const actor = user[0];
     await tx.insert(organizations).values({ id: organizationId, legalName: organization.trim(), organizationType: "other", countryCode: countryCode.trim().toUpperCase(), city: city?.trim() || null });
-    await tx.insert(proposals).values({ id: proposalId, title: title.trim(), acronym: acronym?.trim() || null, coordinatorPartnerId: partnerId, createdByUserId: demoUserId });
+    await tx.insert(proposals).values({ id: proposalId, title: title.trim(), acronym: acronym?.trim() || null, coordinatorPartnerId: partnerId, createdByUserId: request.userId });
     await tx.insert(partners).values({ id: partnerId, proposalId, organizationId, status: "active", primaryContactId: contactId, joinedAt: new Date() });
-    await tx.insert(contacts).values({ id: contactId, proposalId, partnerId, fullName: actor.displayName, email: actor.email, emailKey: actor.emailKey, userId: demoUserId });
-    await tx.insert(memberships).values({ id: membershipId, proposalId, partnerId, userId: demoUserId, accessRole: "coordinator_manager", grantedByUserId: demoUserId });
-    await tx.insert(auditEvents).values({ id: auditId, proposalId, actorUserId: demoUserId, action: "proposal.created", entityType: "proposal", entityId: proposalId });
+    await tx.insert(contacts).values({ id: contactId, proposalId, partnerId, fullName: actor.displayName, email: actor.email, emailKey: actor.emailKey, userId: request.userId });
+    await tx.insert(memberships).values({ id: membershipId, proposalId, partnerId, userId: request.userId, accessRole: "coordinator_manager", grantedByUserId: request.userId });
+    await tx.insert(auditEvents).values({ id: auditId, proposalId, actorUserId: request.userId, action: "proposal.created", entityType: "proposal", entityId: proposalId });
     await client.query("commit");
     response.status(201).json({ id: proposalId });
   } catch (error) {
@@ -73,14 +91,14 @@ app.patch("/api/proposals/:proposalId/partners/:partnerId/contact", async (reque
     const proposal = await client.query("select status from proposals where id = $1 for update", [request.params.proposalId]);
     if (!proposal.rowCount) { await client.query("rollback"); return response.status(404).json({ error: "Proposal not found." }); }
     if (!['draft', 'in_preparation'].includes(proposal.rows[0].status)) { await client.query("rollback"); return response.status(409).json({ error: "This proposal is read-only." }); }
-    const allowed = await client.query("select 1 from proposal_memberships m join users u on u.id = m.user_id where m.proposal_id = $1 and m.partner_id = $2 and m.user_id = $3 and m.status = 'active' and m.access_role in ('coordinator_manager', 'partner_admin') and u.status = 'active'", [request.params.proposalId, request.params.partnerId, demoUserId]);
+    const allowed = await client.query("select 1 from proposal_memberships m join users u on u.id = m.user_id where m.proposal_id = $1 and m.partner_id = $2 and m.user_id = $3 and m.status = 'active' and m.access_role in ('coordinator_manager', 'partner_admin') and u.status = 'active'", [request.params.proposalId, request.params.partnerId, request.userId]);
     if (!allowed.rowCount) { await client.query("rollback"); return response.status(403).json({ error: "The demo user cannot edit this partner." }); }
     const tx = drizzle(client);
     const partner = await tx.select({ contactId: partners.primaryContactId }).from(partners).where(and(eq(partners.proposalId, request.params.proposalId), eq(partners.id, request.params.partnerId), eq(partners.status, "active")));
     if (!partner.length || !partner[0].contactId) { await client.query("rollback"); return response.status(404).json({ error: "Primary contact not found." }); }
     const updated = await tx.update(contacts).set({ fullName: fullName.trim(), email: email.trim(), emailKey: email.trim().toLowerCase(), updatedAt: new Date() }).where(and(eq(contacts.id, partner[0].contactId), eq(contacts.partnerId, request.params.partnerId), eq(contacts.proposalId, request.params.proposalId))).returning({ id: contacts.id });
     if (!updated.length) { await client.query("rollback"); return response.status(404).json({ error: "Primary contact not found." }); }
-    await tx.insert(auditEvents).values({ id: randomUUID(), proposalId: request.params.proposalId, actorUserId: demoUserId, action: "contact.updated", entityType: "partner_contact", entityId: updated[0].id });
+    await tx.insert(auditEvents).values({ id: randomUUID(), proposalId: request.params.proposalId, actorUserId: request.userId, action: "contact.updated", entityType: "partner_contact", entityId: updated[0].id });
     await client.query("commit");
     response.json({ ok: true });
   } catch (error) {
@@ -110,13 +128,15 @@ app.get("/api/proposals", async (request, response) => {
       order by o.legal_name, p.id
     `);
     const contactRows = await pool.query("select id, proposal_id, partner_id, full_name, email, job_title, phone from partner_contacts order by full_name, id");
-    const managed = await pool.query("select partner_id from proposal_memberships m join users u on u.id=m.user_id where m.user_id=$1 and m.status='active' and m.access_role in ('coordinator_manager','partner_admin') and u.status='active'", [demoUserId]);
+    const managed = await pool.query("select partner_id from proposal_memberships m join users u on u.id=m.user_id where m.user_id=$1 and m.status='active' and m.access_role in ('coordinator_manager','partner_admin') and u.status='active'", [request.userId]);
     const managedIds = new Set(managed.rows.map((row) => row.partner_id));
     const responsibilityRows = await pool.query("select r.id, r.proposal_id, r.title, r.description, coalesce(array_agg(pr.partner_id) filter (where pr.partner_id is not null), '{}') as partner_ids from responsibilities r left join partner_responsibilities pr on pr.responsibility_id=r.id and pr.proposal_id=r.proposal_id group by r.id order by r.sort_order, r.title, r.id");
-    const coordinatorRows = await pool.query("select m.proposal_id from proposal_memberships m join proposals p on p.id=m.proposal_id and p.coordinator_partner_id=m.partner_id join users u on u.id=m.user_id where m.user_id=$1 and m.status='active' and m.access_role='coordinator_manager' and u.status='active'", [demoUserId]);
+    const coordinatorRows = await pool.query("select m.proposal_id from proposal_memberships m join proposals p on p.id=m.proposal_id and p.coordinator_partner_id=m.partner_id join users u on u.id=m.user_id where m.user_id=$1 and m.status='active' and m.access_role='coordinator_manager' and u.status='active'", [request.userId]);
     const memberRows = await pool.query("select m.id, m.proposal_id, m.partner_id, m.user_id, m.access_role, u.display_name, u.email from proposal_memberships m join users u on u.id=m.user_id where m.status='active' order by u.display_name, m.id");
     const coordinatorIds = new Set(coordinatorRows.rows.map((row) => row.proposal_id));
-    response.json(proposalRows.map((proposal) => ({
+    const visible = await pool.query("select m.proposal_id from proposal_memberships m join consortium_partners p on p.id=m.partner_id and p.proposal_id=m.proposal_id where m.user_id=$1 and m.status='active' and p.status='active'", [request.userId]);
+    const visibleIds = new Set(visible.rows.map((row) => row.proposal_id));
+    response.json(proposalRows.filter((proposal) => visibleIds.has(proposal.id)).map((proposal) => ({
       ...proposal,
       responsibilities: responsibilityRows.rows.filter((row) => row.proposal_id === proposal.id),
       can_manage_responsibilities: coordinatorIds.has(proposal.id),
@@ -125,7 +145,7 @@ app.get("/api/proposals", async (request, response) => {
         contacts: contactRows.rows.filter((contact) => contact.partner_id === partner.id && contact.proposal_id === proposal.id),
         primary_contact_id: partner.primary_contact_id,
         can_manage_contacts: managedIds.has(partner.id),
-        can_withdraw: memberRows.rows.some((m) => m.partner_id === partner.id && m.user_id === demoUserId && m.access_role === "partner_admin"),
+        can_withdraw: memberRows.rows.some((m) => m.partner_id === partner.id && m.user_id === request.userId && m.access_role === "partner_admin"),
         members: memberRows.rows.filter((m) => m.partner_id === partner.id && m.proposal_id === proposal.id),
       })),
     })));
@@ -135,32 +155,10 @@ app.get("/api/proposals", async (request, response) => {
   }
 });
 
-app.get("/api/example-data", async (request, response) => {
-  try {
-    const pool = request.database;
-    const queries = {
-      users: "select display_name, email, status from users order by display_name, id",
-      organizations: "select legal_name, short_name, organization_type, city, country_code from organizations order by legal_name, id",
-      proposals: "select title, acronym, status from proposals order by title, id",
-      partners: "select p.title as proposal, o.legal_name as organization, cp.status, case when p.coordinator_partner_id = cp.id then 'coordinator' else 'beneficiary' end as role from consortium_partners cp join proposals p on p.id = cp.proposal_id join organizations o on o.id = cp.organization_id order by p.title, o.legal_name, cp.id",
-      contacts: "select p.title as proposal, o.legal_name as organization, c.full_name, c.email from partner_contacts c join consortium_partners cp on cp.id = c.partner_id and cp.proposal_id = c.proposal_id join proposals p on p.id = c.proposal_id join organizations o on o.id = cp.organization_id order by c.full_name, c.id",
-      memberships: "select p.title as proposal, o.legal_name as organization, u.display_name as user_name, m.access_role, m.status from proposal_memberships m join users u on u.id = m.user_id join proposals p on p.id = m.proposal_id join consortium_partners cp on cp.id = m.partner_id and cp.proposal_id = m.proposal_id join organizations o on o.id = cp.organization_id order by p.title, u.display_name, m.id",
-      responsibilities: "select p.title as proposal, r.title, r.description from responsibilities r join proposals p on p.id = r.proposal_id order by p.title, r.sort_order, r.id",
-      assignments: "select p.title as proposal, o.legal_name as organization, r.title as responsibility from partner_responsibilities pr join proposals p on p.id = pr.proposal_id join consortium_partners cp on cp.id = pr.partner_id and cp.proposal_id = pr.proposal_id join organizations o on o.id = cp.organization_id join responsibilities r on r.id = pr.responsibility_id and r.proposal_id = pr.proposal_id order by p.title, o.legal_name, pr.sort_order, r.id",
-      invitations: "select p.title as proposal, o.legal_name as organization, i.kind, i.recipient_email, i.granted_role, i.status, i.expires_at from consortium_invitations i join proposals p on p.id = i.proposal_id join consortium_partners cp on cp.id = i.partner_id and cp.proposal_id = i.proposal_id join organizations o on o.id = cp.organization_id order by i.created_at, i.id",
-      audit_events: "select p.title as proposal, a.action, a.entity_type, a.created_at from audit_events a join proposals p on p.id = a.proposal_id order by a.created_at, a.id",
-    };
-    const entries = await Promise.all(Object.entries(queries).map(async ([name, query]) => [name, (await pool.query(query)).rows]));
-    response.json(Object.fromEntries(entries));
-  } catch (error) {
-    console.error("database query failed", error);
-    response.status(500).json({ error: "could not load example data" });
-  }
-});
-
+addInvitations(app);
 addPartnerRoutes(app);
 addContactRoutes(app);
 addResponsibilityRoutes(app);
-if (demoInvitations) addDemoInvitations(app);
+
 return app;
 }

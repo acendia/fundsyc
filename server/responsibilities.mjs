@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-const demoUserId = "00000000-0000-4000-8000-000000000001";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function addResponsibilityRoutes(app) {
@@ -17,7 +16,7 @@ export function addResponsibilityRoutes(app) {
       const proposal = await client.query("select status, coordinator_partner_id from proposals where id=$1 for update", [proposalId]);
       if (!proposal.rowCount) { await client.query("rollback"); return response.status(404).json({ error: "Proposal not found." }); }
       if (!["draft", "in_preparation"].includes(proposal.rows[0].status)) { await client.query("rollback"); return response.status(409).json({ error: "This proposal is read-only." }); }
-      const allowed = await client.query("select 1 from proposal_memberships m join users u on u.id=m.user_id where m.proposal_id=$1 and m.partner_id=$2 and m.user_id=$3 and m.status='active' and m.access_role='coordinator_manager' and u.status='active'", [proposalId, proposal.rows[0].coordinator_partner_id, demoUserId]);
+      const allowed = await client.query("select 1 from proposal_memberships m join users u on u.id=m.user_id where m.proposal_id=$1 and m.partner_id=$2 and m.user_id=$3 and m.status='active' and m.access_role='coordinator_manager' and u.status='active'", [proposalId, proposal.rows[0].coordinator_partner_id, request.userId]);
       if (!allowed.rowCount) { await client.query("rollback"); return response.status(403).json({ error: "Only the coordinator can manage responsibilities." }); }
       const id = responsibilityId || randomUUID();
       if (action === "create") {
@@ -29,7 +28,7 @@ export function addResponsibilityRoutes(app) {
         if (action === "assign") await client.query("insert into partner_responsibilities(proposal_id, partner_id, responsibility_id) values ($1,$2,$3) on conflict do nothing", [proposalId, partnerId, id]);
         else await client.query("delete from partner_responsibilities where proposal_id=$1 and partner_id=$2 and responsibility_id=$3", [proposalId, partnerId, id]);
       }
-      await client.query("insert into audit_events(id, proposal_id, actor_user_id, action, entity_type, entity_id) values ($1,$2,$3,$4,'responsibility',$5)", [randomUUID(), proposalId, demoUserId, `responsibility.${{create:'created', assign:'assigned', unassign:'unassigned'}[action]}`, id]);
+      await client.query("insert into audit_events(id, proposal_id, actor_user_id, action, entity_type, entity_id) values ($1,$2,$3,$4,'responsibility',$5)", [randomUUID(), proposalId, request.userId, `responsibility.${{create:'created', assign:'assigned', unassign:'unassigned'}[action]}`, id]);
       await client.query("commit");
       response.status(action === "create" ? 201 : 200).json({ ok: true });
     } catch (error) {

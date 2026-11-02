@@ -1,5 +1,43 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { createRoot } from "react-dom/client";
+import { createClient, type SupabaseClient, type Session } from "@supabase/supabase-js";
+
+let authClient: SupabaseClient;
+async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+  const { data } = await authClient.auth.getSession();
+  const headers = new Headers(init.headers);
+  if (data.session) headers.set("Authorization", `Bearer ${data.session.access_token}`);
+  return fetch(input, { ...init, headers });
+}
+
+function Login() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [ready, setReady] = useState(false);
+  const [message, setMessage] = useState("");
+  useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+    fetch("/api/auth/config").then(async (response) => {
+      if (!response.ok) throw new Error("Could not connect to local sign-in.");
+      const config = await response.json();
+      authClient = createClient(config.url, config.key);
+      const { data } = await authClient.auth.getSession();
+      setSession(data.session);
+      const listener = authClient.auth.onAuthStateChange((_event, current) => setSession(current));
+      unsubscribe = () => listener.data.subscription.unsubscribe();
+    }).catch((error) => setMessage(error.message)).finally(() => setReady(true));
+    return () => unsubscribe?.();
+  }, []);
+  async function signIn(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const { error } = await authClient.auth.signInWithPassword({ email: String(data.get("email")), password: String(data.get("password")) });
+    setMessage(error?.message ?? "");
+  }
+  if (!ready) return <main><p>Loading sign-in...</p></main>;
+  if (session) return <><p>Signed in as {session.user.email} <button onClick={() => authClient.auth.signOut()}>Sign out</button></p><App key={session.user.id} /></>;
+  return <main><h1>Sign in to FundSyc</h1><form onSubmit={signIn}><p><label>Email <input name="email" type="email" required /></label></p><p><label>Password <input name="password" type="password" required /></label></p><button disabled={!authClient}>Sign in</button></form>{message && <p role="alert">{message}</p>}</main>;
+}
+
 import "./sections.css";
 import type { Contact, Proposal } from "./api-types";
 
@@ -31,8 +69,7 @@ function App() {
   const [editMessage, setEditMessage] = useState("");
   const [editingSave, setEditingSave] = useState(false);
   const [editingContact, setEditingContact] = useState<string | null>(null);
-  const [demoEnabled, setDemoEnabled] = useState(false);
-  const [demoInvite, setDemoInvite] = useState<{ token: string; recipient: string } | null>(null);
+  const [invitations, setInvitations] = useState<{ id: string; title: string; legal_name: string }[]>([]);
   const [inviteMessage, setInviteMessage] = useState("");
   const [inviteBusy, setInviteBusy] = useState(false);
   const [partnerBusy, setPartnerBusy] = useState(false);
@@ -45,22 +82,21 @@ function App() {
     const form = event.currentTarget;
     setInviteBusy(true); setInviteMessage("");
     try {
-      const response = await fetch("/api/demo/invitations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...Object.fromEntries(new FormData(form)), proposalId }) });
+      const response = await apiFetch("/api/invitations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...Object.fromEntries(new FormData(form)), proposalId }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Could not invite organization.");
-      setDemoInvite(result); form.reset(); setInviteMessage("Invitation created for the demo partner. No email was sent."); setRevision((value) => value + 1);
+      form.reset(); setInviteMessage("Invitation created. No email was sent; the recipient can sign in to see it."); setRevision((value) => value + 1);
     } catch (error) { setInviteMessage(error instanceof Error ? error.message : "Could not invite organization."); }
     finally { setInviteBusy(false); }
   }
 
-  async function resolveInvitation(action: "accept" | "decline") {
-    if (!demoInvite) return;
+  async function resolveInvitation(id: string, action: "accept" | "decline") {
     setInviteBusy(true); setInviteMessage("");
     try {
-      const response = await fetch("/api/demo/invitations/resolve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: demoInvite.token, action }) });
+      const response = await apiFetch(`/api/invitations/${id}/resolve`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Could not resolve invitation.");
-      setDemoInvite(null); setInviteMessage(`Invitation ${result.status}.`); setRevision((value) => value + 1);
+      setInviteMessage(`Invitation ${action === "accept" ? "accepted" : "declined"}.`); setRevision((value) => value + 1);
     } catch (error) { setInviteMessage(error instanceof Error ? error.message : "Could not resolve invitation."); }
     finally { setInviteBusy(false); }
   }
@@ -71,7 +107,7 @@ function App() {
     setEditMessage("");
     try {
       const path = `/api/proposals/${proposalId}/partners/${partnerId}/contacts${contactId ? `/${contactId}` : ""}${primary ? "/primary" : ""}`;
-      const response = await fetch(path, { method, headers: { "Content-Type": "application/json" }, body: data ? JSON.stringify(data) : undefined });
+      const response = await apiFetch(path, { method, headers: { "Content-Type": "application/json" }, body: data ? JSON.stringify(data) : undefined });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Could not save contact.");
       setEditingContact(null);
@@ -96,7 +132,7 @@ function App() {
     setResponsibilityMessage("");
     try {
       const path = `/api/proposals/${proposalId}/responsibilities${responsibilityId && partnerId ? `/${responsibilityId}/partners/${partnerId}` : ""}`;
-      const response = await fetch(path, { method, headers: { "Content-Type": "application/json" }, body: data ? JSON.stringify(data) : undefined });
+      const response = await apiFetch(path, { method, headers: { "Content-Type": "application/json" }, body: data ? JSON.stringify(data) : undefined });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Could not save responsibility.");
       setResponsibilityMessage("Responsibility saved.");
@@ -119,7 +155,7 @@ function App() {
     setPartnerMessage("");
     try {
       const path = `/api/proposals/${proposalId}/partners/${partnerId}/${membershipId ? `memberships/${membershipId}` : "status"}`;
-      const response = await fetch(path, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const response = await apiFetch(path, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Could not save changes.");
       setPartnerMessage("Changes saved.");
@@ -136,7 +172,7 @@ function App() {
     setFormError("");
     setCreated(false);
     try {
-      const response = await fetch("/api/proposals", {
+      const response = await apiFetch("/api/proposals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(Object.fromEntries(data)),
@@ -156,27 +192,19 @@ function App() {
     }
   }
   
-  useEffect(() => {
-    fetch("/api/demo/config").then((response) => response.ok ? response.json() : null).then((result) => setDemoEnabled(result?.enabled === true)).catch(() => setDemoEnabled(false));
-  }, []);
-
   // fetch proposals from the api on component mount
   useEffect(() => {
     const controller = new AbortController();
-    fetch("/api/proposals", { signal: controller.signal })
+    apiFetch("/api/proposals", { signal: controller.signal })
       .then((response) => {
         if (!response.ok) throw new Error("could not load proposals");
         return response.json();
       })
       .then(setProposals)
       .catch(() => { if (!controller.signal.aborted) setError(true); });
-    fetch("/api/example-data", { signal: controller.signal })
-      .then((response) => {
-        if (!response.ok) throw new Error("could not load example data");
-        return response.json();
-      })
-      .then(setExampleData)
-      .catch(() => { if (!controller.signal.aborted) setError(true); });
+    apiFetch("/api/invitations", { signal: controller.signal })
+      .then((response) => { if (!response.ok) throw new Error("could not load invitations"); return response.json(); })
+      .then(setInvitations).catch(() => { if (!controller.signal.aborted) setError(true); });
     return () => controller.abort();
   }, [revision]);
 
@@ -189,18 +217,17 @@ function App() {
         <h2>{selectedProposal.title}</h2>
         <p><strong>Status:</strong> {selectedProposal.status}</p>
         <button type="button" onClick={() => { setScreen("edit"); setEditMessage(""); }}>Edit consortium</button>
-        {demoEnabled && <section className="section section-invite">
+        {selectedProposal.can_manage_responsibilities && <section className="section section-invite">
           <h3>Invite an organization</h3>
-          <p>Local demo: each invitation uses a different example recipient. No email is sent.</p>
+          <p>The recipient can see this invitation after signing in. No email is sent yet.</p>
           <form onSubmit={(event) => inviteOrganization(event, selectedProposal.id)}>
             <p><label>Organization <input name="organization" required /></label></p>
+            <p><label>Recipient email <input name="email" type="email" required /></label></p>
             <p><label>Country code <input name="countryCode" required pattern="[A-Za-z]{2}" maxLength={2} /></label></p>
             <p><label>City <input name="city" /></label></p>
             <button disabled={inviteBusy || !["draft", "in_preparation"].includes(selectedProposal.status)}>Create invitation</button>
           </form>
-          {demoInvite && <div><p>Demo inbox for {demoInvite.recipient}</p><button type="button" disabled={inviteBusy} onClick={() => resolveInvitation("accept")}>Accept</button> <button type="button" disabled={inviteBusy} onClick={() => resolveInvitation("decline")}>Decline</button></div>}
           {inviteMessage && <p role="status">{inviteMessage}</p>}
-          <p>The demo inbox clears when you refresh this page.</p>
         </section>}
         <h3>Partners</h3>
         {selectedProposal.partners.length === 0 && <p>No active partners.</p>}
@@ -291,6 +318,16 @@ function App() {
   return (
     <main>
       <h1>FundSyc</h1>
+      <section className="section section-invite">
+        <h2>My invitations</h2>
+        {invitations.length === 0 && <p>No pending invitations.</p>}
+        {invitations.map((invitation) => <div key={invitation.id}>
+          <p>{invitation.legal_name} — {invitation.title}</p>
+          <button type="button" disabled={inviteBusy} onClick={() => resolveInvitation(invitation.id, "accept")}>Accept</button>{" "}
+          <button type="button" disabled={inviteBusy} onClick={() => resolveInvitation(invitation.id, "decline")}>Decline</button>
+        </div>)}
+        {inviteMessage && <p role="status">{inviteMessage}</p>}
+      </section>
       <section className="section section-create">
         <h2>Create a proposal</h2>
         <p>The seeded demo user will be the coordinator manager and primary contact.</p>
@@ -357,4 +394,4 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(<Login />);

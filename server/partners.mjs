@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-const actor = "00000000-0000-4000-8000-000000000001";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function addPartnerRoutes(app) {
   async function change(req, res, operation) {
@@ -16,7 +15,7 @@ export function addPartnerRoutes(app) {
       if (!["draft", "in_preparation"].includes(proposal.rows[0].status)) { await client.query("rollback"); return res.status(409).json({ error: "This proposal is read-only." }); }
       const partner = await client.query("select status from consortium_partners where id=$1 and proposal_id=$2 for update", [partnerId, proposalId]);
       if (!partner.rowCount || partner.rows[0].status !== "active") { await client.query("rollback"); return res.status(404).json({ error: "Active partner not found." }); }
-      const membership = await client.query("select m.partner_id, m.access_role from proposal_memberships m join users u on u.id=m.user_id where m.proposal_id=$1 and m.user_id=$2 and m.status='active' and u.status='active'", [proposalId, actor]);
+      const membership = await client.query("select m.partner_id, m.access_role from proposal_memberships m join users u on u.id=m.user_id where m.proposal_id=$1 and m.user_id=$2 and m.status='active' and u.status='active'", [proposalId, req.userId]);
       const current = membership.rows[0];
       const coordinator = current?.partner_id === proposal.rows[0].coordinator_partner_id && current?.access_role === 'coordinator_manager';
       const ownAdmin = current?.partner_id === partnerId && current?.access_role === 'partner_admin';
@@ -32,7 +31,7 @@ export function addPartnerRoutes(app) {
         if (target.rows[0].access_role === 'coordinator_manager' || partnerId === proposal.rows[0].coordinator_partner_id) { await client.query("rollback"); return res.status(409).json({ error: "Coordinator roles cannot be changed here." }); }
         await client.query("update proposal_memberships set access_role=$1, updated_at=now() where id=$2", [role, membershipId]);
       }
-      await client.query("insert into audit_events(id,proposal_id,actor_user_id,action,entity_type,entity_id,metadata) values($1,$2,$3,$4,$5,$6,$7)", [randomUUID(), proposalId, actor, operation === 'partner' ? `partner.${status}` : 'membership.role_updated', operation === 'partner' ? 'consortium_partner' : 'proposal_membership', operation === 'partner' ? partnerId : membershipId, JSON.stringify(operation === 'role' ? { role } : {})]);
+      await client.query("insert into audit_events(id,proposal_id,actor_user_id,action,entity_type,entity_id,metadata) values($1,$2,$3,$4,$5,$6,$7)", [randomUUID(), proposalId, req.userId, operation === 'partner' ? `partner.${status}` : 'membership.role_updated', operation === 'partner' ? 'consortium_partner' : 'proposal_membership', operation === 'partner' ? partnerId : membershipId, JSON.stringify(operation === 'role' ? { role } : {})]);
       await client.query("commit"); res.json({ ok: true });
     } catch (error) { if (client) await client.query("rollback").catch(() => {}); console.error("partner change failed", error); res.status(500).json({ error: "Could not save changes." }); }
     finally { client?.release(); }
