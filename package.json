@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "concurrently -k \"npm:dev:api\" \"npm:dev:web\"",
     "build": "tsc --noEmit && vite build",
-    "dev:api": "node server/local.mjs",
+    "dev:api": "node --watch server/local.mjs",
     "dev:web": "vite --host 127.0.0.1",
     "dev:worker": "npm run build && wrangler dev --local"
   },

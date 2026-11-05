@@ -13,7 +13,7 @@ async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}) {
 function Login() {
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
-  const [recovering, setRecovering] = useState(false);
+  const [registering, setRegistering] = useState(false);
   const [message, setMessage] = useState("");
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
@@ -21,10 +21,7 @@ function Login() {
       if (!response.ok) throw new Error("Could not connect to local sign-in.");
       const config = await response.json();
       authClient = createClient(config.url, config.key);
-      const listener = authClient.auth.onAuthStateChange((event, current) => {
-        if (event === "PASSWORD_RECOVERY") setRecovering(true);
-        setSession(current);
-      });
+      const listener = authClient.auth.onAuthStateChange((_event, current) => setSession(current));
       const { data } = await authClient.auth.getSession();
       setSession(data.session);
       unsubscribe = () => listener.data.subscription.unsubscribe();
@@ -37,24 +34,20 @@ function Login() {
     const { error } = await authClient.auth.signInWithPassword({ email: String(data.get("email")), password: String(data.get("password")) });
     setMessage(error?.message ?? "");
   }
-  async function resetPassword(event: FormEvent<HTMLFormElement>) {
+  async function signUp(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const email = String(new FormData(event.currentTarget).get("email"));
-    const { error } = await authClient.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/` });
-    setMessage(error ? error.message : "If the account exists, check your email for a password reset link.");
-  }
-  async function updatePassword(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const password = String(new FormData(event.currentTarget).get("password"));
-    const { error } = await authClient.auth.updateUser({ password });
+    const data = new FormData(event.currentTarget);
+    const fullName = String(data.get("fullName")).trim();
+    if (!fullName) { setMessage("Enter your full name."); return; }
+    const { data: result, error } = await authClient.auth.signUp({ email: String(data.get("email")).trim(), password: String(data.get("password")), options: { data: { full_name: fullName } } });
     if (error) { setMessage(error.message); return; }
-    setRecovering(false);
-    setMessage("");
+    if (!result.session) { setMessage("Account registration could not finish. Email confirmations must be disabled in Supabase."); return; }
+    setRegistering(false); setMessage("");
   }
   if (!ready) return <main><p>Loading sign-in...</p></main>;
-  if (recovering) return <main><h1>Choose a new password</h1><form onSubmit={updatePassword}><p><label>New password <input name="password" type="password" required minLength={8} /></label></p><button>Save password</button></form>{message && <p role="alert">{message}</p>}</main>;
+  if (registering) return <main><h1>Create an account</h1><form onSubmit={signUp}><p><label>Full name <input name="fullName" required /></label></p><p><label>Email <input name="email" type="email" required /></label></p><p><label>Password <input name="password" type="password" minLength={8} required /></label></p><button disabled={!authClient}>Create account</button></form><button type="button" onClick={() => { setRegistering(false); setMessage(""); }}>Back to sign in</button>{message && <p role="status">{message}</p>}</main>;
   if (session) return <><p>Signed in as {session.user.email} <button onClick={() => authClient.auth.signOut()}>Sign out</button></p><App key={session.user.id} /></>;
-  return <main><h1>Sign in to FundSyc</h1><form onSubmit={signIn}><p><label>Email <input name="email" type="email" required /></label></p><p><label>Password <input name="password" type="password" required /></label></p><button disabled={!authClient}>Sign in</button></form>{message && <p role="alert">{message}</p>}<h2>Reset password</h2><form onSubmit={resetPassword}><p><label>Email <input name="email" type="email" required /></label></p><button disabled={!authClient}>Send reset link</button></form></main>;
+  return <main><h1>Sign in to FundSyc</h1><form onSubmit={signIn}><p><label>Email <input name="email" type="email" required /></label></p><p><label>Password <input name="password" type="password" required /></label></p><button disabled={!authClient}>Sign in</button></form>{message && <p role="alert">{message}</p>}<p><button type="button" onClick={() => { setRegistering(true); setMessage(""); }}>Create an account</button></p></main>;
 }
 
 import "./sections.css";
@@ -88,12 +81,13 @@ function App() {
   const [editMessage, setEditMessage] = useState("");
   const [editingSave, setEditingSave] = useState(false);
   const [editingContact, setEditingContact] = useState<string | null>(null);
-  const [invitations, setInvitations] = useState<{ id: string; title: string; legal_name: string }[]>([]);
+  const [invitations, setInvitations] = useState<{ id: string; title: string; legal_name: string; kind: string; granted_role: string }[]>([]);
   const [inviteMessage, setInviteMessage] = useState("");
   const [inviteBusy, setInviteBusy] = useState(false);
   const [partnerBusy, setPartnerBusy] = useState(false);
   const [partnerMessage, setPartnerMessage] = useState("");
   const [responsibilityBusy, setResponsibilityBusy] = useState(false);
+  const [editingResponsibility, setEditingResponsibility] = useState<string | null>(null);
   const [responsibilityMessage, setResponsibilityMessage] = useState("");
 
   async function inviteOrganization(event: FormEvent<HTMLFormElement>, proposalId: string) {
@@ -104,15 +98,15 @@ function App() {
       const response = await apiFetch("/api/invitations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...Object.fromEntries(new FormData(form)), proposalId }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Could not invite organization.");
-      form.reset(); setInviteMessage("Invitation created. No email was sent; the recipient can sign in to see it."); setRevision((value) => value + 1);
+      form.reset(); setInviteMessage("Invitation created. The recipient can sign in to see it."); setRevision((value) => value + 1);
     } catch (error) { setInviteMessage(error instanceof Error ? error.message : "Could not invite organization."); }
     finally { setInviteBusy(false); }
   }
 
-  async function resolveInvitation(id: string, action: "accept" | "decline") {
+  async function resolveInvitation(id: string, action: "accept" | "decline", kind: string) {
     setInviteBusy(true); setInviteMessage("");
     try {
-      const response = await apiFetch(`/api/invitations/${id}/resolve`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
+      const response = await apiFetch(`/api/${kind === "member" ? "member-invitations" : "invitations"}/${id}/resolve`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Could not resolve invitation.");
       setInviteMessage(`Invitation ${action === "accept" ? "accepted" : "declined"}.`); setRevision((value) => value + 1);
@@ -120,6 +114,19 @@ function App() {
     finally { setInviteBusy(false); }
   }
 
+
+  async function inviteColleague(event: FormEvent<HTMLFormElement>, proposalId: string, partnerId: string) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    setInviteBusy(true); setEditMessage("");
+    try {
+      const response = await apiFetch(`/api/proposals/${proposalId}/partners/${partnerId}/member-invitations`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.fromEntries(new FormData(form))) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not invite colleague.");
+      form.reset(); setRevision((current) => current + 1); setEditMessage("Invitation created. The colleague can see it after signing in.");
+    } catch (error) { setEditMessage(error instanceof Error ? error.message : "Could not invite colleague."); }
+    finally { setInviteBusy(false); }
+  }
 
   async function changeContact(proposalId: string, partnerId: string, method: string, contactId?: string, data?: object, primary = false) {
     setEditingSave(true);
@@ -150,8 +157,9 @@ function App() {
     setResponsibilityBusy(true);
     setResponsibilityMessage("");
     try {
-      const path = `/api/proposals/${proposalId}/responsibilities${responsibilityId && partnerId ? `/${responsibilityId}/partners/${partnerId}` : ""}`;
+      const path = `/api/proposals/${proposalId}/responsibilities${responsibilityId ? `/${responsibilityId}${partnerId ? `/partners/${partnerId}` : ""}` : ""}`;
       const response = await apiFetch(path, { method, headers: { "Content-Type": "application/json" }, body: data ? JSON.stringify(data) : undefined });
+      if (!response.headers.get("content-type")?.includes("application/json")) throw new Error("The API did not recognize this action. Restart the app and try again.");
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Could not save responsibility.");
       setResponsibilityMessage("Responsibility saved.");
@@ -238,7 +246,7 @@ function App() {
         <button type="button" onClick={() => { setScreen("edit"); setEditMessage(""); }}>Edit consortium</button>
         {selectedProposal.can_manage_responsibilities && <section className="section section-invite">
           <h3>Invite an organization</h3>
-          <p>The recipient can see this invitation after signing in. No email is sent yet.</p>
+          <p>The recipient can see this invitation after signing in. </p>
           <form onSubmit={(event) => inviteOrganization(event, selectedProposal.id)}>
             <p><label>Organization <input name="organization" required /></label></p>
             <p><label>Recipient email <input name="email" type="email" required /></label></p>
@@ -247,9 +255,13 @@ function App() {
             <button disabled={inviteBusy || !["draft", "in_preparation"].includes(selectedProposal.status)}>Create invitation</button>
           </form>
           {inviteMessage && <p role="status">{inviteMessage}</p>}
-          <h4>Pending invitations</h4>
-          {selectedProposal.pending_invitations.length === 0 ? <p>No pending invitations.</p> : <ul>{selectedProposal.pending_invitations.map((invitation) => <li key={invitation.id}>{invitation.legal_name} — {invitation.recipient_email} (expires {new Date(invitation.expires_at).toLocaleDateString()})</li>)}</ul>}
+
         </section>}
+        <section className="section section-invite">
+          <h3>Pending invitations</h3>
+          <button type="button" onClick={() => setRevision((current) => current + 1)}>Refresh invitations</button>
+          {selectedProposal.pending_invitations.length === 0 ? <p>No pending invitations to manage.</p> : <ul>{selectedProposal.pending_invitations.map((invitation) => <li key={invitation.id}>{invitation.legal_name} — {invitation.recipient_email} — {invitation.kind === "member" ? `Colleague (${invitation.granted_role})` : "Organization"} (expires {new Date(invitation.expires_at).toLocaleDateString()})</li>)}</ul>}
+        </section>
         <h3>Partners</h3>
         {selectedProposal.partners.length === 0 && <p>No active partners.</p>}
         {selectedProposal.partners.map((partner) => (
@@ -278,8 +290,21 @@ function App() {
           <p>Create responsibilities and choose which partners are responsible for each one.</p>
           {selectedProposal.responsibilities.length === 0 && <p>No responsibilities yet.</p>}
           {selectedProposal.responsibilities.map((responsibility) => <div key={responsibility.id}>
-            <h4>{responsibility.title}</h4>
-            {responsibility.description && <p>{responsibility.description}</p>}
+            {editingResponsibility === responsibility.id ? <form onSubmit={async (event) => {
+              event.preventDefault();
+              const data = Object.fromEntries(new FormData(event.currentTarget));
+              if (await changeResponsibility(selectedProposal.id, "PATCH", responsibility.id, undefined, data)) setEditingResponsibility(null);
+            }}>
+              <p><label>Title <input name="title" defaultValue={responsibility.title} required /></label></p>
+              <p><label>Description <input name="description" defaultValue={responsibility.description ?? ""} /></label></p>
+              <button disabled={responsibilityBusy}>Save</button>{" "}<button type="button" onClick={() => setEditingResponsibility(null)}>Cancel</button>
+            </form> : <><h4>{responsibility.title}</h4>
+              {responsibility.description && <p>{responsibility.description}</p>}
+              {selectedProposal.can_manage_responsibilities && ["draft", "in_preparation"].includes(selectedProposal.status) && <p>
+                <button type="button" disabled={responsibilityBusy} onClick={() => setEditingResponsibility(responsibility.id)}>Edit</button>{" "}
+                <button type="button" disabled={responsibilityBusy} onClick={() => { if (window.confirm(`Remove ${responsibility.title}? It and its assignments will be marked as removed.`)) void changeResponsibility(selectedProposal.id, "DELETE", responsibility.id); }}>Remove</button>
+              </p>}
+            </>}
             {selectedProposal.partners.map((partner) => <p key={partner.id}><label>
               <input type="checkbox" checked={responsibility.partner_ids.includes(partner.id)} disabled={responsibilityBusy || !selectedProposal.can_manage_responsibilities || !["draft", "in_preparation"].includes(selectedProposal.status)} onChange={(event) => void changeResponsibility(selectedProposal.id, event.target.checked ? "PUT" : "DELETE", responsibility.id, partner.id)} /> {partner.legal_name}
             </label></p>)}
@@ -308,6 +333,17 @@ function App() {
           return <section className="section section-partner" key={partner.id}>
             <h3>{partner.legal_name}</h3>
             <p>{partner.id === selectedProposal.coordinator_partner_id ? "Coordinator" : "Beneficiary"} — {partner.status}</p>
+            {editable && <form onSubmit={(event) => inviteColleague(event, selectedProposal.id, partner.id)}>
+              <h4>Invite a colleague</h4>
+              <p><label>Email <input name="email" type="email" required /></label></p>
+              <p><label>Role <select name="role" defaultValue="viewer"><option value="viewer">Viewer</option><option value="contributor">Contributor</option><option value="partner_admin">Partner admin</option></select></label></p>
+              <button disabled={inviteBusy}>Invite colleague</button>
+            </form>}
+            {(editable || selectedProposal.can_manage_responsibilities) && <>
+              <h4>Pending colleague invitations</h4>
+              {selectedProposal.pending_invitations.filter((invitation) => invitation.kind === "member" && invitation.partner_id === partner.id).length === 0 && <p>No pending colleague invitations.</p>}
+              <ul>{selectedProposal.pending_invitations.filter((invitation) => invitation.kind === "member" && invitation.partner_id === partner.id).map((invitation) => <li key={invitation.id}>{invitation.recipient_email} — {invitation.granted_role} (expires {new Date(invitation.expires_at).toLocaleDateString()})</li>)}</ul>
+            </>}
             <h4>Proposal access</h4>
             {partner.members.length === 0 && <p>No members with access.</p>}
             {partner.members.map((member) => <p key={member.id}>{member.display_name} ({member.email}) — {selectedProposal.can_manage_responsibilities && partner.id !== selectedProposal.coordinator_partner_id && ["draft", "in_preparation"].includes(selectedProposal.status) ? <select aria-label={`Role for ${member.display_name}`} value={member.access_role} disabled={partnerBusy} onChange={(event) => void changePartner(selectedProposal.id, partner.id, { role: event.target.value }, member.id)}><option value="partner_admin">Partner admin</option><option value="contributor">Contributor</option><option value="viewer">Viewer</option></select> : member.access_role}</p>)}
@@ -343,9 +379,9 @@ function App() {
         <h2>My invitations</h2>
         {invitations.length === 0 && <p>No pending invitations.</p>}
         {invitations.map((invitation) => <div key={invitation.id}>
-          <p>{invitation.legal_name} — {invitation.title}</p>
-          <button type="button" disabled={inviteBusy} onClick={() => resolveInvitation(invitation.id, "accept")}>Accept</button>{" "}
-          <button type="button" disabled={inviteBusy} onClick={() => resolveInvitation(invitation.id, "decline")}>Decline</button>
+          <p>{invitation.legal_name} — {invitation.title} {invitation.kind === "member" && `(${invitation.granted_role})`}</p>
+          <button type="button" disabled={inviteBusy} onClick={() => resolveInvitation(invitation.id, "accept", invitation.kind)}>Accept</button>{" "}
+          <button type="button" disabled={inviteBusy} onClick={() => resolveInvitation(invitation.id, "decline", invitation.kind)}>Decline</button>
         </div>)}
         {inviteMessage && <p role="status">{inviteMessage}</p>}
       </section>

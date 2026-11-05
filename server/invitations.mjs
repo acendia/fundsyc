@@ -4,14 +4,14 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function addInvitations(app) {
   app.get("/api/invitations", async (req, res) => {
-    if (!req.verifiedEmail) return res.json([]);
+    if (!req.accountEmail) return res.json([]);
     try {
-      const result = await req.database.query(`select i.id, p.title, o.legal_name
+      const result = await req.database.query(`select i.id, i.kind, i.granted_role, p.title, o.legal_name
         from consortium_invitations i join proposals p on p.id=i.proposal_id
         join consortium_partners cp on cp.id=i.partner_id and cp.proposal_id=i.proposal_id
         join organizations o on o.id=cp.organization_id
-        where i.recipient_email_key=$1 and i.kind='organization' and i.status='pending'
-          and i.expires_at>now() and cp.status='invited' order by i.created_at`, [req.verifiedEmail]);
+        where i.recipient_email_key=$1 and i.status='pending'
+          and i.expires_at>now() and ((i.kind='organization' and cp.status='invited') or (i.kind='member' and cp.status='active')) order by i.created_at`, [req.accountEmail]);
       res.json(result.rows);
     } catch (error) { console.error("invitation list failed", error); res.status(500).json({ error: "Could not load invitations." }); }
   });
@@ -41,11 +41,11 @@ export function addInvitations(app) {
 
   app.post("/api/invitations/:id/resolve", async (req, res) => {
     if (!uuid.test(req.params.id) || !["accept", "decline"].includes(req.body?.action)) return res.status(400).json({ error: "Invalid invitation." });
-    if (!req.verifiedEmail) return res.status(403).json({ error: "A verified email is required." });
+    if (!req.accountEmail) return res.status(403).json({ error: "Sign in with an email account." });
     let client;
     try {
       client = await req.database.connect(); await client.query("begin");
-      const lookup = await client.query("select proposal_id from consortium_invitations where id=$1 and recipient_email_key=$2", [req.params.id, req.verifiedEmail]);
+      const lookup = await client.query("select proposal_id from consortium_invitations where id=$1 and recipient_email_key=$2", [req.params.id, req.accountEmail]);
       if (!lookup.rowCount) { await client.query("rollback"); return res.status(404).json({ error: "Invitation not found." }); }
       const proposal = await client.query("select status from proposals where id=$1 for update", [lookup.rows[0].proposal_id]);
       const result = await client.query("select * from consortium_invitations where id=$1 for update", [req.params.id]);

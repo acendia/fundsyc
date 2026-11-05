@@ -107,6 +107,8 @@ export class PartnerContact {
     public userId: UUID | null,
     public createdAt: Date,
     public updatedAt: Date,
+    public status: "active" | "removed" = "active",
+    public removedAt: Date | null = null,
   ) {}
 }
 
@@ -137,6 +139,8 @@ export class Responsibility {
     public sortOrder: number,
     public createdAt: Date,
     public updatedAt: Date,
+    public status: "active" | "removed" = "active",
+    public removedAt: Date | null = null,
   ) {}
 }
 
@@ -148,6 +152,8 @@ export class PartnerResponsibility {
     public responsibilityId: UUID,
     public sortOrder: number,
     public createdAt: Date,
+    public status: "active" | "removed" = "active",
+    public removedAt: Date | null = null,
   ) {}
 }
 

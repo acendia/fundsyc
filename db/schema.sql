@@ -33,9 +33,9 @@ ALTER TABLE proposals ADD CONSTRAINT proposal_coordinator_fk FOREIGN KEY(id,coor
 CREATE TABLE partner_contacts (
  id uuid PRIMARY KEY, proposal_id uuid NOT NULL, partner_id uuid NOT NULL,
  full_name text NOT NULL, email text NOT NULL, email_key text NOT NULL, job_title text, phone text,
- user_id uuid REFERENCES users, UNIQUE(partner_id,email_key), UNIQUE(partner_id,id),
+ user_id uuid REFERENCES users, UNIQUE(partner_id,id),
  FOREIGN KEY(proposal_id,partner_id) REFERENCES consortium_partners(proposal_id,id),
- created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+ status text NOT NULL DEFAULT 'active' CHECK(status IN ('active','removed')), removed_at timestamptz, CHECK((status='removed') = (removed_at IS NOT NULL)), created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE consortium_partners ADD CONSTRAINT partner_primary_contact_fk FOREIGN KEY(id,primary_contact_id)
  REFERENCES partner_contacts(partner_id,id) DEFERRABLE INITIALLY DEFERRED;
@@ -51,13 +51,13 @@ CREATE TABLE proposal_memberships (
 CREATE TABLE responsibilities (
  id uuid PRIMARY KEY, proposal_id uuid NOT NULL REFERENCES proposals, title text NOT NULL, description text,
  sort_order integer NOT NULL DEFAULT 0, UNIQUE(proposal_id,id),
- created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+ status text NOT NULL DEFAULT 'active' CHECK(status IN ('active','removed')), removed_at timestamptz, CHECK((status='removed') = (removed_at IS NOT NULL)), created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE partner_responsibilities (
  proposal_id uuid NOT NULL, partner_id uuid NOT NULL, responsibility_id uuid NOT NULL, sort_order integer NOT NULL DEFAULT 0,
  PRIMARY KEY(partner_id,responsibility_id),
  FOREIGN KEY(proposal_id,partner_id) REFERENCES consortium_partners(proposal_id,id),
- FOREIGN KEY(proposal_id,responsibility_id) REFERENCES responsibilities(proposal_id,id), created_at timestamptz NOT NULL DEFAULT now()
+ FOREIGN KEY(proposal_id,responsibility_id) REFERENCES responsibilities(proposal_id,id), status text NOT NULL DEFAULT 'active' CHECK(status IN ('active','removed')), removed_at timestamptz, CHECK((status='removed') = (removed_at IS NOT NULL)), created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE TABLE consortium_invitations (
  id uuid PRIMARY KEY, proposal_id uuid NOT NULL, partner_id uuid NOT NULL,
@@ -83,3 +83,5 @@ CREATE INDEX contacts_partner ON partner_contacts(proposal_id,partner_id);
 CREATE INDEX assignments_responsibility ON partner_responsibilities(proposal_id,responsibility_id);
 CREATE INDEX invitations_proposal ON consortium_invitations(proposal_id,status,expires_at);
 CREATE INDEX audit_proposal ON audit_events(proposal_id,created_at);
+
+CREATE UNIQUE INDEX active_contact_email ON partner_contacts(partner_id,email_key) WHERE status='active';

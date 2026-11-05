@@ -22,7 +22,7 @@ export function addContactRoutes(app) {
       if (!allowed.rowCount) { await client.query("rollback"); return response.status(403).json({ error: "The demo user cannot manage contacts for this partner." }); }
       const id = contactId || randomUUID();
       if (contactId) {
-        const existing = await client.query("select id from partner_contacts where id = $1 and partner_id = $2 and proposal_id = $3", [id, partnerId, proposalId]);
+        const existing = await client.query("select id from partner_contacts where id = $1 and partner_id = $2 and proposal_id = $3 and status='active'", [id, partnerId, proposalId]);
         if (!existing.rowCount) { await client.query("rollback"); return response.status(404).json({ error: "Contact not found." }); }
       }
       if (action === "create") await client.query("insert into partner_contacts (id, proposal_id, partner_id, full_name, email, email_key, job_title, phone) values ($1,$2,$3,$4,$5,$6,$7,$8)", [id, proposalId, partnerId, fullName.trim(), email.trim(), email.trim().toLowerCase(), jobTitle?.trim() || null, phone?.trim() || null]);
@@ -30,7 +30,7 @@ export function addContactRoutes(app) {
       if (action === "primary") await client.query("update consortium_partners set primary_contact_id=$1, updated_at=now() where id=$2 and proposal_id=$3", [id, partnerId, proposalId]);
       if (action === "delete") {
         if (partner.rows[0].primary_contact_id === id) { await client.query("rollback"); return response.status(409).json({ error: "Choose another primary contact before removing this one." }); }
-        await client.query("delete from partner_contacts where id=$1 and partner_id=$2 and proposal_id=$3", [id, partnerId, proposalId]);
+        await client.query("update partner_contacts set status='removed', removed_at=now(), updated_at=now() where id=$1 and partner_id=$2 and proposal_id=$3", [id, partnerId, proposalId]);
       }
       await client.query("insert into audit_events (id, proposal_id, actor_user_id, action, entity_type, entity_id) values ($1,$2,$3,$4,'partner_contact',$5)", [randomUUID(), proposalId, request.userId, `contact.${{ create: "created", update: "updated", primary: "made_primary", delete: "removed" }[action]}`, id]);
       await client.query("commit");
