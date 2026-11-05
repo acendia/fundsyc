@@ -26,5 +26,9 @@
       "pattern": "dev.fundsyc.com",
       "custom_domain": true
     }
-  ]
+  ],
+  "vars": {
+    "SUPABASE_URL": "https://spzkpyfldstvbambkjuv.supabase.co",
+    "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_aGOfTRnbUe_44vNxeSoIVQ_iSypP0lk"
+  }
 }

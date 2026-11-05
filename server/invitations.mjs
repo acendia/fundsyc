@@ -28,7 +28,7 @@ export function addInvitations(app) {
       if (!allowed.rowCount) { await client.query("rollback"); return res.status(403).json({ error: "Only the coordinator can invite organizations." }); }
       const duplicate = await client.query("select 1 from consortium_partners cp join organizations o on o.id=cp.organization_id where cp.proposal_id=$1 and cp.status in ('active','invited') and lower(trim(o.legal_name))=lower(trim($2))", [proposalId, organization]);
       if (duplicate.rowCount) { await client.query("rollback"); return res.status(409).json({ error: "This organization is already active or invited in this proposal." }); }
-      const existing = await client.query("select 1 from proposal_memberships m join users u on u.id=m.user_id where m.proposal_id=$1 and u.email_key=$2", [proposalId, email.trim().toLowerCase()]);
+      const existing = await client.query("select 1 from proposal_memberships m join users u on u.id=m.user_id where m.proposal_id=$1 and u.email_key=$2 and m.status='active'", [proposalId, email.trim().toLowerCase()]);
       if (existing.rowCount) { await client.query("rollback"); return res.status(409).json({ error: "This account already has a membership in the proposal." }); }
       const orgId = randomUUID(), partnerId = randomUUID(), id = randomUUID(), emailKey = email.trim().toLowerCase();
       await client.query("insert into organizations(id,legal_name,organization_type,country_code,city) values($1,$2,'other',$3,$4)", [orgId, organization.trim(), countryCode.trim().toUpperCase(), city?.trim() || null]);
@@ -55,12 +55,12 @@ export function addInvitations(app) {
       if (!partner.rowCount) { await client.query("rollback"); return res.status(409).json({ error: "Partner is no longer invited." }); }
       if (req.body.action === "accept") {
         const user = await client.query("select display_name from users where id=$1 and status='active'", [req.userId]);
-        const existing = await client.query("select 1 from proposal_memberships where proposal_id=$1 and user_id=$2", [invitation.proposal_id, req.userId]);
-        if (existing.rowCount) { await client.query("rollback"); return res.status(409).json({ error: "You already have a membership in this proposal." }); }
+        const existing = await client.query("select status from proposal_memberships where proposal_id=$1 and user_id=$2 for update", [invitation.proposal_id, req.userId]);
+        if (existing.rows[0]?.status === "active") { await client.query("rollback"); return res.status(409).json({ error: "You already have a membership in this proposal." }); }
         const contactId = randomUUID();
         await client.query("insert into partner_contacts(id,proposal_id,partner_id,full_name,email,email_key,user_id) values($1,$2,$3,$4,$5,$6,$7)", [contactId, invitation.proposal_id, invitation.partner_id, user.rows[0].display_name, invitation.recipient_email, invitation.recipient_email_key, req.userId]);
         await client.query("update consortium_partners set status='active',primary_contact_id=$1,joined_at=now(),updated_at=now() where id=$2", [contactId, invitation.partner_id]);
-        await client.query("insert into proposal_memberships(id,proposal_id,partner_id,user_id,access_role,granted_by_user_id) values($1,$2,$3,$4,'partner_admin',$5)", [randomUUID(), invitation.proposal_id, invitation.partner_id, req.userId, invitation.invited_by_user_id]);
+        await client.query("insert into proposal_memberships(id,proposal_id,partner_id,user_id,access_role,granted_by_user_id) values($1,$2,$3,$4,'partner_admin',$5) on conflict (proposal_id,user_id) do update set partner_id=excluded.partner_id, access_role=excluded.access_role, status='active', revoked_at=null, joined_at=now(), granted_by_user_id=excluded.granted_by_user_id, updated_at=now() where proposal_memberships.status='revoked'", [randomUUID(), invitation.proposal_id, invitation.partner_id, req.userId, invitation.invited_by_user_id]);
         await client.query("update consortium_invitations set status='accepted',accepted_by_user_id=$1,resolved_at=now(),updated_at=now() where id=$2", [req.userId, invitation.id]);
       } else {
         await client.query("update consortium_invitations set status='declined',resolved_at=now(),updated_at=now() where id=$1", [invitation.id]);

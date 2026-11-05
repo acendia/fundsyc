@@ -43,6 +43,7 @@ export type Proposal = {
   status: string;
   coordinator_partner_id: string;
   partners: Partner[];
+  pending_invitations: { id: string; legal_name: string; recipient_email: string; expires_at: string }[];
   responsibilities: Responsibility[];
   can_manage_responsibilities: boolean;
 };

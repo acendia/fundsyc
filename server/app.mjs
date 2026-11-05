@@ -134,12 +134,14 @@ app.get("/api/proposals", async (request, response) => {
     const coordinatorRows = await pool.query("select m.proposal_id from proposal_memberships m join proposals p on p.id=m.proposal_id and p.coordinator_partner_id=m.partner_id join users u on u.id=m.user_id where m.user_id=$1 and m.status='active' and m.access_role='coordinator_manager' and u.status='active'", [request.userId]);
     const memberRows = await pool.query("select m.id, m.proposal_id, m.partner_id, m.user_id, m.access_role, u.display_name, u.email from proposal_memberships m join users u on u.id=m.user_id where m.status='active' order by u.display_name, m.id");
     const coordinatorIds = new Set(coordinatorRows.rows.map((row) => row.proposal_id));
+    const pendingInvitations = await pool.query("select i.id, i.proposal_id, i.recipient_email, i.expires_at, o.legal_name from consortium_invitations i join consortium_partners cp on cp.id=i.partner_id and cp.proposal_id=i.proposal_id join organizations o on o.id=cp.organization_id join proposals p on p.id=i.proposal_id join proposal_memberships m on m.proposal_id=p.id and m.partner_id=p.coordinator_partner_id where m.user_id=$1 and m.status='active' and m.access_role='coordinator_manager' and i.kind='organization' and i.status='pending' and i.expires_at>now() and cp.status='invited' order by i.created_at, i.id", [request.userId]);
     const visible = await pool.query("select m.proposal_id from proposal_memberships m join consortium_partners p on p.id=m.partner_id and p.proposal_id=m.proposal_id where m.user_id=$1 and m.status='active' and p.status='active'", [request.userId]);
     const visibleIds = new Set(visible.rows.map((row) => row.proposal_id));
     response.json(proposalRows.filter((proposal) => visibleIds.has(proposal.id)).map((proposal) => ({
       ...proposal,
       responsibilities: responsibilityRows.rows.filter((row) => row.proposal_id === proposal.id),
       can_manage_responsibilities: coordinatorIds.has(proposal.id),
+      pending_invitations: pendingInvitations.rows.filter((invitation) => invitation.proposal_id === proposal.id),
       partners: partners.rows.filter((partner) => partner.proposal_id === proposal.id).map((partner) => ({
         ...partner,
         contacts: contactRows.rows.filter((contact) => contact.partner_id === partner.id && contact.proposal_id === proposal.id),

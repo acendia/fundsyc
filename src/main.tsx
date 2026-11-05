@@ -13,6 +13,7 @@ async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}) {
 function Login() {
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
+  const [recovering, setRecovering] = useState(false);
   const [message, setMessage] = useState("");
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
@@ -20,9 +21,12 @@ function Login() {
       if (!response.ok) throw new Error("Could not connect to local sign-in.");
       const config = await response.json();
       authClient = createClient(config.url, config.key);
+      const listener = authClient.auth.onAuthStateChange((event, current) => {
+        if (event === "PASSWORD_RECOVERY") setRecovering(true);
+        setSession(current);
+      });
       const { data } = await authClient.auth.getSession();
       setSession(data.session);
-      const listener = authClient.auth.onAuthStateChange((_event, current) => setSession(current));
       unsubscribe = () => listener.data.subscription.unsubscribe();
     }).catch((error) => setMessage(error.message)).finally(() => setReady(true));
     return () => unsubscribe?.();
@@ -33,9 +37,24 @@ function Login() {
     const { error } = await authClient.auth.signInWithPassword({ email: String(data.get("email")), password: String(data.get("password")) });
     setMessage(error?.message ?? "");
   }
+  async function resetPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const email = String(new FormData(event.currentTarget).get("email"));
+    const { error } = await authClient.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/` });
+    setMessage(error ? error.message : "If the account exists, check your email for a password reset link.");
+  }
+  async function updatePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const password = String(new FormData(event.currentTarget).get("password"));
+    const { error } = await authClient.auth.updateUser({ password });
+    if (error) { setMessage(error.message); return; }
+    setRecovering(false);
+    setMessage("");
+  }
   if (!ready) return <main><p>Loading sign-in...</p></main>;
+  if (recovering) return <main><h1>Choose a new password</h1><form onSubmit={updatePassword}><p><label>New password <input name="password" type="password" required minLength={8} /></label></p><button>Save password</button></form>{message && <p role="alert">{message}</p>}</main>;
   if (session) return <><p>Signed in as {session.user.email} <button onClick={() => authClient.auth.signOut()}>Sign out</button></p><App key={session.user.id} /></>;
-  return <main><h1>Sign in to FundSyc</h1><form onSubmit={signIn}><p><label>Email <input name="email" type="email" required /></label></p><p><label>Password <input name="password" type="password" required /></label></p><button disabled={!authClient}>Sign in</button></form>{message && <p role="alert">{message}</p>}</main>;
+  return <main><h1>Sign in to FundSyc</h1><form onSubmit={signIn}><p><label>Email <input name="email" type="email" required /></label></p><p><label>Password <input name="password" type="password" required /></label></p><button disabled={!authClient}>Sign in</button></form>{message && <p role="alert">{message}</p>}<h2>Reset password</h2><form onSubmit={resetPassword}><p><label>Email <input name="email" type="email" required /></label></p><button disabled={!authClient}>Send reset link</button></form></main>;
 }
 
 import "./sections.css";
@@ -228,6 +247,8 @@ function App() {
             <button disabled={inviteBusy || !["draft", "in_preparation"].includes(selectedProposal.status)}>Create invitation</button>
           </form>
           {inviteMessage && <p role="status">{inviteMessage}</p>}
+          <h4>Pending invitations</h4>
+          {selectedProposal.pending_invitations.length === 0 ? <p>No pending invitations.</p> : <ul>{selectedProposal.pending_invitations.map((invitation) => <li key={invitation.id}>{invitation.legal_name} — {invitation.recipient_email} (expires {new Date(invitation.expires_at).toLocaleDateString()})</li>)}</ul>}
         </section>}
         <h3>Partners</h3>
         {selectedProposal.partners.length === 0 && <p>No active partners.</p>}
