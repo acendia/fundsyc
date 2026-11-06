@@ -1,3 +1,5 @@
+export type ApiFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
 export type Contact = {
   id: string;
   full_name: string;
@@ -38,6 +40,7 @@ export type Responsibility = {
 
 export type Proposal = {
   id: string;
+  created_at: string;
   title: string;
   acronym: string | null;
   status: string;
@@ -48,3 +51,24 @@ export type Proposal = {
   can_manage_responsibilities: boolean;
 };
 
+
+export type DocumentRecord = {
+  id: string;
+  title: string;
+  description: string | null;
+  category: string;
+  owner_user_id: string;
+  owner_name: string;
+  added_by_name: string;
+  updated_at: string;
+  can_edit: boolean;
+  versions: { id: string; version_number: number; version_note: string | null; review_status: string; source_kind: string; file_name: string | null; size_bytes: number | null; external_url: string | null; created_at: string; added_by_name: string }[];
+};
+
+export type DocumentList = {
+  proposal: { title: string; status: string };
+  current_user_id: string;
+  can_add: boolean;
+  owners: { user_id: string; display_name: string }[];
+  documents: DocumentRecord[];
+};

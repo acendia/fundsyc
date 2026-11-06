@@ -14,3 +14,20 @@
 
 [role="alert"] { color: #9b1c1c; }
 [role="status"] { color: #174f38; }
+
+.workspace { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 1rem; }
+.workspace-sidebar { border-right: 1px solid #ccc; padding: 0 1rem; }
+.workspace-sidebar nav { display: flex; flex-direction: column; gap: 0.5rem; }
+.workspace-sidebar [aria-current="page"] { font-weight: bold; background: #eaf2ff; }
+.workspace-content { min-width: 0; padding-right: 1rem; }
+.workspace-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; border-bottom: 1px solid #ccc; padding-bottom: 0.5rem; }
+.workspace-header label { margin-left: auto; }
+.workspace-header select { max-width: min(45vw, 500px); }
+.workspace-tools { margin-top: 1rem; }
+@media (max-width: 600px) {
+  .workspace { grid-template-columns: 110px minmax(0, 1fr); gap: 0.5rem; }
+  .workspace-sidebar { padding: 0 0.5rem; }
+  .workspace-sidebar h2 { font-size: 1rem; }
+  .workspace-header label { margin-left: 0; }
+  .workspace-header select { max-width: 100%; }
+}

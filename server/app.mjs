@@ -1,4 +1,6 @@
 import express from "express";
+import { createDocumentStorage } from "./document-storage.mjs";
+import { addDocumentRoutes } from "./documents.mjs";
 import { addResponsibilityRoutes } from "./responsibilities.mjs";
 import { addPartnerRoutes } from "./partners.mjs";
 import { addContactRoutes } from "./contacts.mjs";
@@ -7,10 +9,10 @@ import { addInvitations } from "./invitations.mjs";
 import pg from "pg";
 import { randomUUID } from "node:crypto";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { and, eq } from "drizzle-orm";
+import { and, eq, desc } from "drizzle-orm";
 import { users, organizations, proposals, partners, contacts, memberships, auditEvents } from "../db/tables.mjs";
 
-export function createApp(getConnectionString, { authUrl, authKey } = {}) {
+export function createApp(getConnectionString, { authUrl, authKey, storageKey, storageBucket } = {}) {
 const app = express();
 app.use(express.json());
 
@@ -121,7 +123,7 @@ app.get("/api/proposals", async (request, response) => {
   try {
     const pool = request.database;
     const db = drizzle(pool);
-    const proposalRows = await db.select({ id: proposals.id, title: proposals.title, acronym: proposals.acronym, status: proposals.status, coordinator_partner_id: proposals.coordinatorPartnerId }).from(proposals).orderBy(proposals.createdAt, proposals.id);
+    const proposalRows = await db.select({ id: proposals.id, title: proposals.title, acronym: proposals.acronym, status: proposals.status, created_at: proposals.createdAt, coordinator_partner_id: proposals.coordinatorPartnerId }).from(proposals).orderBy(desc(proposals.createdAt), desc(proposals.id));
     const partners = await pool.query(`
       select p.proposal_id, p.id, p.status, p.primary_contact_id, o.legal_name, o.city, o.country_code,
              c.full_name, c.email,
@@ -179,6 +181,7 @@ app.get("/api/proposals", async (request, response) => {
   }
 });
 
+addDocumentRoutes(app, createDocumentStorage(authUrl, storageKey, storageBucket));
 addInvitations(app);
 addMemberInvitations(app);
 addPartnerRoutes(app);

@@ -30,6 +30,32 @@ export type InvitationStatus =
   | "expired";
 export type InvitationRole = Exclude<AccessRole, "coordinator_manager">;
 
+export const documentCategories = [
+  { value: "proposal_drafts", label: "Proposal drafts" },
+  { value: "budget_finance", label: "Budget & finance" },
+  { value: "legal_documents", label: "Legal documents" },
+  { value: "supporting_evidence", label: "Supporting evidence" },
+] as const;
+
+export type DocumentCategory = (typeof documentCategories)[number]["value"];
+export type DocumentStatus = "active" | "removed";
+
+export type DocumentSourceKind = "uploaded_file" | "external_link";
+
+export type DocumentSource =
+  | {
+      kind: "uploaded_file";
+      storageKey: string;
+      fileName: string;
+      contentType: string;
+      sizeBytes: number;
+    }
+  | {
+      kind: "external_link";
+      url: string;
+    };
+
+
 
 
 // the person using the platform
@@ -190,5 +216,39 @@ export class AuditEvent {
     public entityId: UUID,
     public metadata: Record<string, unknown>,
     public createdAt: Date,
+  ) {}
+}
+
+// one document in a proposal, owner and uploader can differ
+export class ProposalDocument {
+  constructor(
+    public id: UUID,
+    public proposalId: UUID,
+    public title: string,
+    public description: string | null,
+    public category: DocumentCategory,
+    public ownerUserId: UUID,
+    public addedByUserId: UUID,
+    public createdAt: Date,
+    public updatedAt: Date,
+    public updatedByUserId: UUID,
+    public status: DocumentStatus = "active",
+    public removedAt: Date | null = null,
+    public removedByUserId: UUID | null = null,
+  ) {}
+}
+
+// each version points to its own file or link
+export class DocumentVersion {
+  constructor(
+    public id: UUID,
+    public proposalId: UUID,
+    public documentId: UUID,
+    public versionNumber: number,
+    public source: DocumentSource,
+    public addedByUserId: UUID,
+    public versionNote: string | null,
+    public createdAt: Date,
+    public reviewStatus: "not_submitted" = "not_submitted",
   ) {}
 }
