@@ -270,3 +270,62 @@ export class DocumentReview {
     public updatedAt: Date,
   ) {}
 }
+
+export const taskProgressOptions = [
+  { value: "todo", label: "To do" },
+  { value: "in_progress", label: "In progress" },
+  { value: "in_review", label: "In review" },
+  { value: "completed", label: "Completed" },
+] as const;
+
+export const taskPriorityOptions = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "urgent", label: "Urgent" },
+] as const;
+
+export type TaskProgress = (typeof taskProgressOptions)[number]["value"];
+export type TaskPriority = (typeof taskPriorityOptions)[number]["value"];
+export type TaskStatus = "active" | "removed";
+
+// one task in a proposal, can stay unassigned within a partner
+export class Task {
+  constructor(
+    public id: UUID,
+    public proposalId: UUID,
+    public partnerId: UUID,
+    public title: string,
+    public description: string | null,
+    public createdByUserId: UUID,
+    public updatedByUserId: UUID,
+    public createdAt: Date,
+    public updatedAt: Date,
+    public progress: TaskProgress = "todo",
+    public priority: TaskPriority = "medium",
+    public assigneeUserId: UUID | null = null,
+    public assignedByUserId: UUID | null = null,
+    public assignedAt: Date | null = null,
+    // date only, separate from when someone was assigned
+    public dueDate: string | null = null,
+    public status: TaskStatus = "active",
+    public removedAt: Date | null = null,
+    public removedByUserId: UUID | null = null,
+  ) {}
+}
+
+// comments stay linked to the task when removed
+export class TaskComment {
+  constructor(
+    public id: UUID,
+    public proposalId: UUID,
+    public taskId: UUID,
+    public authorUserId: UUID,
+    public body: string,
+    public createdAt: Date,
+    public updatedAt: Date,
+    public status: "active" | "removed" = "active",
+    public removedAt: Date | null = null,
+    public removedByUserId: UUID | null = null,
+  ) {}
+}
