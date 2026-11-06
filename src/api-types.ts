@@ -101,3 +101,39 @@ export type DocumentVersionRecord = {
   review_status: string;
   reviews: DocumentReviewRecord[];
 };
+
+export type TaskRecord = {
+  id: string;
+  title: string;
+  description: string | null;
+  partner_id: string;
+  partner_name: string;
+  assignee_user_id: string | null;
+  assignee_name: string | null;
+  progress: string;
+  priority: string;
+  assigned_at: string | null;
+  due_date: string | null;
+  created_at: string;
+  updated_at: string;
+  created_by_name: string;
+  updated_by_name: string;
+  comment_count: number;
+  can_edit: boolean;
+  can_assign: boolean;
+  can_remove: boolean;
+};
+export type TaskPartner = {
+  id: string;
+  legal_name: string;
+  can_create: boolean;
+  members: { user_id: string; display_name: string }[];
+};
+export type TaskList = {
+  proposal: { id: string; status: string };
+  current_user_id: string;
+  can_add: boolean;
+  can_assign_new: boolean;
+  partners: TaskPartner[];
+  tasks: TaskRecord[];
+};
