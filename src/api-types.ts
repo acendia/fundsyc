@@ -62,13 +62,42 @@ export type DocumentRecord = {
   added_by_name: string;
   updated_at: string;
   can_edit: boolean;
-  versions: { id: string; version_number: number; version_note: string | null; review_status: string; source_kind: string; file_name: string | null; size_bytes: number | null; external_url: string | null; created_at: string; added_by_name: string }[];
+  versions: DocumentVersionRecord[];
 };
 
 export type DocumentList = {
+  reviewers: { user_id: string; display_name: string }[];
   proposal: { title: string; status: string };
   current_user_id: string;
   can_add: boolean;
   owners: { user_id: string; display_name: string }[];
   documents: DocumentRecord[];
+};
+
+export type DocumentReviewRecord = {
+  id: string;
+  reviewer_user_id: string;
+  reviewer_name: string;
+  requested_by_name: string;
+  created_at: string;
+  resolved_at: string | null;
+  status: string;
+  due_date: string | null;
+  instructions: string | null;
+  response: string | null;
+  can_respond: boolean;
+  can_cancel: boolean;
+};
+export type DocumentVersionRecord = {
+  id: string;
+  version_number: number;
+  source_kind: string;
+  file_name: string | null;
+  size_bytes: number | null;
+  external_url: string | null;
+  created_at: string;
+  added_by_name: string;
+  version_note: string | null;
+  review_status: string;
+  reviews: DocumentReviewRecord[];
 };

@@ -15,6 +15,12 @@ export function DocumentsPage({ proposalId, refreshKey, apiFetch, onBusyChange, 
   const [source, setSource] = useState("link");
   const [addingVersion, setAddingVersion] = useState(false);
   const [versionSource, setVersionSource] = useState("file");
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [ownerFilter, setOwnerFilter] = useState("");
+  const [reviewFilter, setReviewFilter] = useState("");
+  const [myReviews, setMyReviews] = useState(false);
+  const [reviewVersion, setReviewVersion] = useState<string | null>(null);
   useEffect(() => { onBusyChange(busy); }, [busy, onBusyChange]);
   const path = `/api/proposals/${proposalId}/documents`;
   useEffect(() => {
@@ -65,6 +71,16 @@ export function DocumentsPage({ proposalId, refreshKey, apiFetch, onBusyChange, 
     } catch (error) { setMessage(error instanceof Error ? error.message : "Could not add version."); }
     finally { setBusy(false); }
   }
+  async function changeReview(documentId: string, versionId: string, body: object, reviewId?: string) {
+    setBusy(true); setMessage("");
+    try {
+      const response = await apiFetch(`${path}/${documentId}/versions/${versionId}/reviews${reviewId ? `/${reviewId}` : ""}`, { method: reviewId ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Could not save review.");
+      setReviewVersion(null); setMessage("Review saved."); setRevision((value) => value + 1);
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not save review."); }
+    finally { setBusy(false); }
+  }
   async function download(documentId: string, versionId: string, fileName: string) {
     setBusy(true); setMessage("");
     try {
@@ -89,6 +105,8 @@ export function DocumentsPage({ proposalId, refreshKey, apiFetch, onBusyChange, 
     </>;
   }
   const document = data?.documents.find((item) => item.id === selected);
+  const reviewLabels: Record<string, string> = { not_submitted: "Not submitted", in_review: "In review", approved: "Approved", changes_requested: "Changes requested", pending: "Pending", cancelled: "Cancelled" };
+  const filteredDocuments = data?.documents.filter((item) => item.title.toLowerCase().includes(search.trim().toLowerCase()) && (!categoryFilter || item.category === categoryFilter) && (!ownerFilter || item.owner_user_id === ownerFilter) && (!reviewFilter || (item.versions[0]?.review_status ?? "not_submitted") === reviewFilter) && (!myReviews || item.versions.some((version) => version.reviews.some((review) => review.reviewer_user_id === data.current_user_id && review.status === "pending")))) ?? [];
   const categoryLabel = (value: string) => documentCategories.find((category) => category.value === value)?.label ?? value;
   return <main>
     <h1>Documents</h1>
@@ -97,8 +115,9 @@ export function DocumentsPage({ proposalId, refreshKey, apiFetch, onBusyChange, 
     {!data && !loadError && <p>Loading documents...</p>}
     {data && <>
       <p>Proposal status: {data.proposal.status}</p>
+      <p>Viewers can open and download. Contributors manage their own documents; partner admins manage their organization’s documents; the coordinator manages all proposal documents.</p>
       {selected ? document ? <section className="section section-partner">
-        <button type="button" disabled={busy} onClick={() => { setSelected(null); setEditing(false); setAddingVersion(false); }}>Back to documents</button>
+        <button type="button" disabled={busy} onClick={() => { setSelected(null); setEditing(false); setAddingVersion(false); setReviewVersion(null); }}>Back to documents</button>
         <h2>{document.title}</h2>
         {editing && document.can_edit ? <form key={document.id} onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); void save("PATCH", event.currentTarget, document.id); }}>
           {fields(document)}<button disabled={busy}>Save changes</button>{" "}<button type="button" onClick={() => setEditing(false)}>Cancel</button>
@@ -107,7 +126,29 @@ export function DocumentsPage({ proposalId, refreshKey, apiFetch, onBusyChange, 
           <p>Owner: {document.owner_name}</p><p>Added by: {document.added_by_name}</p>
           <p>Last modified: {new Date(document.updated_at).toLocaleString()}</p>
           <h3>Versions</h3>
-          <ul>{document.versions.map((version) => <li key={version.id}>Version {version.version_number}{version.id === document.versions[0]?.id ? " (current)" : ""} — {version.review_status === "not_submitted" ? "Not submitted" : version.review_status} — added by {version.added_by_name} on {new Date(version.created_at).toLocaleString()}{" "}{version.external_url ? <a href={version.external_url} target="_blank" rel="noopener noreferrer">Open link</a> : version.source_kind === "uploaded_file" && <><span>{version.file_name}</span>{" "}<button type="button" disabled={busy} onClick={() => download(document.id, version.id, version.file_name ?? "document")}>Download</button></>}{version.version_note && <p>Note: {version.version_note}</p>}</li>)}</ul>
+          <ul>{document.versions.map((version) => <li key={version.id}>
+            <p><strong>Version {version.version_number}{version.id === document.versions[0]?.id ? " (current)" : ""}</strong> — {reviewLabels[version.review_status] ?? version.review_status} — added by {version.added_by_name} on {new Date(version.created_at).toLocaleString()}</p>
+            {version.external_url ? <a href={version.external_url} target="_blank" rel="noopener noreferrer">Open link</a> : version.source_kind === "uploaded_file" && <><span>{version.file_name}</span>{" "}<button type="button" disabled={busy} onClick={() => download(document.id, version.id, version.file_name ?? "document")}>Download</button></>}
+            {version.version_note && <p>Note: {version.version_note}</p>}
+            {version.reviews.map((review) => <section key={review.id}>
+              <p>Review: {reviewLabels[review.status] ?? review.status} — {review.reviewer_name}; requested by {review.requested_by_name}{review.due_date ? `; due ${review.due_date}` : ""}</p>
+              <p>Requested: {new Date(review.created_at).toLocaleString()}{review.resolved_at ? `; resolved: ${new Date(review.resolved_at).toLocaleString()}` : ""}</p>
+              {review.instructions && <p>Instructions: {review.instructions}</p>}{review.response && <p>Response: {review.response}</p>}
+              {review.can_respond && <form onSubmit={(event) => { event.preventDefault(); const submitter = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null; void changeReview(document.id, version.id, { status: submitter?.value || "approved", response: new FormData(event.currentTarget).get("response") }, review.id); }}>
+                <p><label>Review response <textarea name="response" /></label></p><button value="approved" disabled={busy}>Approve</button>{" "}<button value="changes_requested" disabled={busy}>Request changes</button>
+              </form>}
+              {review.can_cancel && <button type="button" disabled={busy} onClick={() => changeReview(document.id, version.id, {status:"cancelled"}, review.id)}>Cancel review</button>}
+            </section>)}
+            {document.can_edit && !version.reviews.some((review) => review.status === "pending") && <p><button type="button" disabled={busy || data.reviewers.length === 0} onClick={() => { setReviewVersion(version.id); setAddingVersion(false); }}>Request review for version {version.version_number}</button></p>}
+          </li>)}</ul>
+          {reviewVersion && document.can_edit && <form key={reviewVersion} onSubmit={(event) => { event.preventDefault(); void changeReview(document.id, reviewVersion, Object.fromEntries(new FormData(event.currentTarget))); }}>
+            <h3>Request review — version {document.versions.find((version) => version.id === reviewVersion)?.version_number}</h3>
+            <p><label>Reviewer <select name="reviewerUserId" required>{data.reviewers.map((member) => <option key={member.user_id} value={member.user_id}>{member.display_name}</option>)}</select></label></p>
+            <p><label>Due date <input name="dueDate" type="date" /></label></p><p><label>Instructions <textarea name="instructions" /></label></p>
+            <button disabled={busy}>Request review</button>{" "}<button type="button" disabled={busy} onClick={() => setReviewVersion(null)}>Cancel</button>
+          </form>}
+          {document.can_edit && data.reviewers.length === 0 && <p>A review needs another active contributor or administrator in this proposal.</p>}
+
           <p>External links use the sharing permissions of the original service. Changes inside Google Docs are not tracked here; upload a file snapshot when a fixed copy is needed.</p>
           {addingVersion && document.can_edit && <form onSubmit={(event) => saveVersion(event, document.id)}>
             <h3>Add version {(document.versions[0]?.version_number ?? 0) + 1}</h3>
@@ -118,13 +159,21 @@ export function DocumentsPage({ proposalId, refreshKey, apiFetch, onBusyChange, 
             <button disabled={busy}>{busy ? "Saving..." : "Save new version"}</button>{" "}<button type="button" disabled={busy} onClick={() => setAddingVersion(false)}>Cancel</button>
             {message && <p role="status">{message}</p>}
           </form>}
-          {document.can_edit && !addingVersion && <p><button type="button" disabled={busy} onClick={() => { setAddingVersion(true); setVersionSource(document.versions[0]?.source_kind === "external_link" ? "link" : "file"); setMessage(""); }}>Add new version</button></p>}
-          {document.can_edit && <><button type="button" disabled={busy} onClick={() => { setEditing(true); setAddingVersion(false); }}>Edit information</button>{" "}<button type="button" disabled={busy} onClick={() => { if (window.confirm(`Mark ${document.title} as removed? Its versions will be kept.`)) void save("DELETE", undefined, document.id); }}>Remove document</button></>}
+          {document.can_edit && !addingVersion && <p><button type="button" disabled={busy} onClick={() => { setReviewVersion(null); setAddingVersion(true); setVersionSource(document.versions[0]?.source_kind === "external_link" ? "link" : "file"); setMessage(""); }}>Add new version</button></p>}
+          {document.can_edit && <><button type="button" disabled={busy} onClick={() => { setEditing(true); setAddingVersion(false); setReviewVersion(null); }}>Edit information</button>{" "}<button type="button" disabled={busy} onClick={() => { if (window.confirm(`Mark ${document.title} as removed? Its versions will be kept.`)) void save("DELETE", undefined, document.id); }}>Remove document</button></>}
         </>}
-      </section> : <><p>Document is no longer available.</p><button type="button" onClick={() => { setSelected(null); setEditing(false); setAddingVersion(false); }}>Back to documents</button></> : <>
+      </section> : <><p>Document is no longer available.</p><button type="button" onClick={() => { setSelected(null); setEditing(false); setAddingVersion(false); setReviewVersion(null); }}>Back to documents</button></> : <>
         <h2>Active documents</h2>
-        {data.documents.length === 0 ? <p>No documents yet.</p> : <table><thead><tr><th>Title</th><th>Category</th><th>Owner</th><th>Version</th><th>Review state</th><th>Last modified</th><th>Actions</th></tr></thead><tbody>{data.documents.map((item) => <tr key={item.id}>
-          <td>{item.title}</td><td>{categoryLabel(item.category)}</td><td>{item.owner_name}</td><td>{item.versions[0]?.version_number ?? "—"}</td><td>{item.versions[0]?.review_status === "not_submitted" ? "Not submitted" : item.versions[0]?.review_status ?? "—"}</td><td>{new Date(item.updated_at).toLocaleString()}</td><td><button type="button" onClick={() => { setSelected(item.id); setAddingVersion(false); setMessage(""); }}>Details</button>{" "}{item.versions[0]?.external_url ? <a href={item.versions[0].external_url} target="_blank" rel="noopener noreferrer">Open link</a> : item.versions[0]?.source_kind === "uploaded_file" && <button type="button" disabled={busy} onClick={() => download(item.id, item.versions[0].id, item.versions[0].file_name ?? "document")}>Download</button>}</td>
+        <section aria-label="Document filters">
+          <p><label>Search title <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} /></label></p>
+          <p><label>Category filter <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="">All categories</option>{documentCategories.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}</select></label>{" "}
+          <label>Owner filter <select value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)}><option value="">All owners</option>{Array.from(new Map(data.documents.map((item) => [item.owner_user_id,item.owner_name])).entries()).map(([id,name]) => <option key={id} value={id}>{name}</option>)}</select></label>{" "}
+          <label>Current version review state <select value={reviewFilter} onChange={(event) => setReviewFilter(event.target.value)}><option value="">All review states</option>{["not_submitted","in_review","approved","changes_requested"].map((state) => <option key={state} value={state}>{reviewLabels[state]}</option>)}</select></label></p>
+          <p><label><input type="checkbox" checked={myReviews} onChange={(event) => setMyReviews(event.target.checked)} /> Reviews assigned to me</label></p>
+          <button type="button" onClick={() => { setSearch(""); setCategoryFilter(""); setOwnerFilter(""); setReviewFilter(""); setMyReviews(false); }}>Clear filters</button>
+        </section>
+        {filteredDocuments.length === 0 ? <p>{data.documents.length === 0 ? "No documents yet." : "No documents match these filters."}</p> : <table><thead><tr><th>Title</th><th>Category</th><th>Owner</th><th>Version</th><th>Review state</th><th>Last modified</th><th>Actions</th></tr></thead><tbody>{filteredDocuments.map((item) => <tr key={item.id}>
+          <td>{item.title}</td><td>{categoryLabel(item.category)}</td><td>{item.owner_name}</td><td>{item.versions[0]?.version_number ?? "—"}</td><td>{reviewLabels[item.versions[0]?.review_status] ?? "—"}</td><td>{new Date(item.updated_at).toLocaleString()}</td><td><button type="button" onClick={() => { setSelected(item.id); setAddingVersion(false); setMessage(""); }}>Details</button>{" "}{item.versions[0]?.external_url ? <a href={item.versions[0].external_url} target="_blank" rel="noopener noreferrer">Open link</a> : item.versions[0]?.source_kind === "uploaded_file" && <button type="button" disabled={busy} onClick={() => download(item.id, item.versions[0].id, item.versions[0].file_name ?? "document")}>Download</button>}</td>
         </tr>)}</tbody></table>}
         {data.can_add ? <section className="section section-create"><h2>Add a document</h2><form onSubmit={(event) => { event.preventDefault(); void save("POST", event.currentTarget); }}>
           <p><label>Source <select value={source} onChange={(event) => setSource(event.target.value)}><option value="link">External link</option><option value="file">Upload file</option></select></label></p>

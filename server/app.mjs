@@ -1,5 +1,6 @@
 import express from "express";
 import { createDocumentStorage } from "./document-storage.mjs";
+import { addDocumentReviewRoutes } from "./document-reviews.mjs";
 import { addDocumentRoutes } from "./documents.mjs";
 import { addResponsibilityRoutes } from "./responsibilities.mjs";
 import { addPartnerRoutes } from "./partners.mjs";
@@ -182,6 +183,7 @@ app.get("/api/proposals", async (request, response) => {
 });
 
 addDocumentRoutes(app, createDocumentStorage(authUrl, storageKey, storageBucket));
+addDocumentReviewRoutes(app);
 addInvitations(app);
 addMemberInvitations(app);
 addPartnerRoutes(app);

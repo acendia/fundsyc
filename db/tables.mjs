@@ -1,4 +1,4 @@
-import { pgTable, text, uuid, timestamp, integer, bigint } from "drizzle-orm/pg-core";
+import { pgTable, text, uuid, timestamp, integer, bigint, date } from "drizzle-orm/pg-core";
 
 // these mappings describe existing columns; db/schema.sql owns the database constraints
 export const users = pgTable("users", { id: uuid("id"), displayName: text("display_name"), email: text("email"), emailKey: text("email_key"), status: text("status") });
@@ -41,4 +41,19 @@ export const documentVersions = pgTable("document_versions", {
   reviewStatus: text("review_status"),
   addedByUserId: uuid("added_by_user_id"),
   createdAt: timestamp("created_at", { withTimezone: true }),
+});
+
+export const documentReviews = pgTable("document_reviews", {
+  id: uuid("id"),
+  proposalId: uuid("proposal_id"),
+  versionId: uuid("version_id"),
+  requestedByUserId: uuid("requested_by_user_id"),
+  reviewerUserId: uuid("reviewer_user_id"),
+  dueDate: date("due_date"),
+  instructions: text("instructions"),
+  response: text("response"),
+  status: text("status"),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
 });

@@ -1,10 +1,11 @@
 import multer from "multer";
+import { canAddDocument, canManageDocument, canChangeDocuments, documentMemberSql } from "./document-permissions.mjs";
 import { maxDocumentBytes } from "./document-storage.mjs";
 import { randomUUID } from "node:crypto";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const categories = ["proposal_drafts", "budget_finance", "legal_documents", "supporting_evidence"];
-const memberSql = "select m.user_id, m.partner_id, m.access_role, u.display_name from proposal_memberships m join users u on u.id=m.user_id join consortium_partners cp on cp.id=m.partner_id and cp.proposal_id=m.proposal_id where m.proposal_id=$1 and m.status='active' and u.status='active' and cp.status='active'";
-const editable = (actor, owner, coordinatorId) => actor && actor.access_role !== "viewer" && ((actor.access_role === "coordinator_manager" && actor.partner_id === coordinatorId) || actor.user_id === owner?.user_id || (actor.access_role === "partner_admin" && actor.partner_id === owner?.partner_id));
+const memberSql = documentMemberSql;
+
 export function addDocumentRoutes(app, storage = null) {
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: maxDocumentBytes, files: 1, fields: 4, fieldSize: 16000 } }).single("file");
   const base = "/api/proposals/:proposalId/documents";
@@ -15,10 +16,11 @@ export function addDocumentRoutes(app, storage = null) {
       const actor = members.find(m => m.user_id === req.userId);
       if (!actor) return res.status(403).json({error:"You do not have access to this proposal."});
       const proposal = (await req.database.query("select title,status,coordinator_partner_id from proposals where id=$1", [req.params.proposalId])).rows[0];
-      const docs = await req.database.query("select d.*, u.display_name as owner_name, a.display_name as added_by_name from documents d join users u on u.id=d.owner_user_id join users a on a.id=d.added_by_user_id where d.proposal_id=$1 and d.status='active' order by d.updated_at desc,d.id", [req.params.proposalId]);
+      const docs = await req.database.query("select d.*, om.partner_id as owner_partner_id, u.display_name as owner_name, a.display_name as added_by_name from documents d join proposal_memberships om on om.proposal_id=d.proposal_id and om.user_id=d.owner_user_id join users u on u.id=d.owner_user_id join users a on a.id=d.added_by_user_id where d.proposal_id=$1 and d.status='active' order by d.updated_at desc,d.id", [req.params.proposalId]);
       const versions = await req.database.query("select v.id,v.document_id,v.version_number,v.source_kind,v.file_name,v.size_bytes,v.external_url,v.version_note,v.review_status,v.created_at,u.display_name as added_by_name from document_versions v join documents d on d.id=v.document_id and d.proposal_id=v.proposal_id join users u on u.id=v.added_by_user_id where d.proposal_id=$1 and d.status='active' order by v.version_number desc", [req.params.proposalId]);
-      const writable = ["draft","in_preparation"].includes(proposal.status);
-      res.json({proposal, current_user_id:req.userId, can_add:writable && actor.access_role!=="viewer", owners:members.filter(m=>editable(actor,m,proposal.coordinator_partner_id)), documents:docs.rows.map(d=>({...d, can_edit:writable && editable(actor, members.find(m=>m.user_id===d.owner_user_id) ?? {user_id:d.owner_user_id},proposal.coordinator_partner_id), versions:versions.rows.filter(v=>v.document_id===d.id)}))});
+      const reviews = (await poolReviews(req.database, req.params.proposalId));
+      const writable = canChangeDocuments(proposal);
+      res.json({proposal, reviewers:members.filter(m=>m.user_id!==req.userId && canAddDocument(m)), current_user_id:req.userId, can_add:writable && canAddDocument(actor), owners:members.filter(m=>canManageDocument(actor,m,proposal.coordinator_partner_id)), documents:docs.rows.map(d=>({...d, can_edit:writable && canManageDocument(actor, {user_id:d.owner_user_id,partner_id:d.owner_partner_id},proposal.coordinator_partner_id), versions:versions.rows.filter(v=>v.document_id===d.id).map(v=>({...v,reviews:reviews.filter(r=>r.version_id===v.id).map(r=>({...r,can_respond:writable && r.status==='pending' && r.reviewer_user_id===req.userId && canAddDocument(actor),can_cancel:writable && r.status==='pending' && canManageDocument(actor,{user_id:d.owner_user_id,partner_id:d.owner_partner_id},proposal.coordinator_partner_id)}))}))}))});
     } catch(error) { console.error("document read failed",error); res.status(500).json({error:"Could not load documents."}); }
   });
   async function save(req,res,action) {
@@ -50,15 +52,15 @@ export function addDocumentRoutes(app, storage = null) {
       const members=(await c.query(memberSql,[proposalId])).rows;
       const actor=members.find(m=>m.user_id===req.userId);
       if(!p||!actor){await c.query("rollback");return res.status(403).json({error:"You do not have access to this proposal."});}
-      if(!["draft","in_preparation"].includes(p.status)){await c.query("rollback");return res.status(409).json({error:"This proposal is read-only."});}
+      if(!canChangeDocuments(p)){await c.query("rollback");return res.status(409).json({error:"This proposal is read-only."});}
       const owner=members.find(m=>m.user_id===ownerUserId);
       const id=documentId||randomUUID();
       if(!creating) {
-        const doc=(await c.query("select owner_user_id from documents where id=$1 and proposal_id=$2 and status='active' for update",[id,proposalId])).rows[0];
+        const doc=(await c.query("select d.owner_user_id,m.partner_id as owner_partner_id from documents d join proposal_memberships m on m.proposal_id=d.proposal_id and m.user_id=d.owner_user_id where d.id=$1 and d.proposal_id=$2 and d.status='active' for update of d",[id,proposalId])).rows[0];
         if(!doc){await c.query("rollback");return res.status(404).json({error:"Document not found."});}
-        if(!editable(actor,members.find(m=>m.user_id===doc.owner_user_id)??{user_id:doc.owner_user_id},p.coordinator_partner_id)){await c.query("rollback");return res.status(403).json({error:"You cannot manage this document."});}
+        if(!canManageDocument(actor,{user_id:doc.owner_user_id,partner_id:doc.owner_partner_id},p.coordinator_partner_id)){await c.query("rollback");return res.status(403).json({error:"You cannot manage this document."});}
       }
-      if((creating || action === "update") && (!owner||!editable(actor,owner,p.coordinator_partner_id))){await c.query("rollback");return res.status(403).json({error:"Choose an active owner you can manage."});}
+      if((creating || action === "update") && (!owner||!canManageDocument(actor,owner,p.coordinator_partner_id))){await c.query("rollback");return res.status(403).json({error:"Choose an active owner you can manage."});}
       let versionNumber;
       if (creating || addingVersion) {
         if (creating) await c.query("insert into documents(id,proposal_id,title,description,category,owner_user_id,added_by_user_id,updated_by_user_id) values($1,$2,$3,$4,$5,$6,$7,$7)",[id,proposalId,title.trim(),description?.trim()||null,category,ownerUserId,req.userId]);
@@ -110,4 +112,8 @@ export function addDocumentRoutes(app, storage = null) {
   app.post(base,(req,res)=>save(req,res,"create"));
   app.patch(`${base}/:documentId`,(req,res)=>save(req,res,"update"));
   app.delete(`${base}/:documentId`,(req,res)=>save(req,res,"remove"));
+}
+
+async function poolReviews(pool,proposalId) {
+  return (await pool.query("select r.id,r.version_id,r.reviewer_user_id,r.status,r.due_date::text,r.instructions,r.response,r.created_at,r.resolved_at,u.display_name as reviewer_name,a.display_name as requested_by_name from document_reviews r join users u on u.id=r.reviewer_user_id join users a on a.id=r.requested_by_user_id where r.proposal_id=$1 order by r.created_at desc,r.id desc",[proposalId])).rows;
 }

@@ -249,6 +249,24 @@ export class DocumentVersion {
     public addedByUserId: UUID,
     public versionNote: string | null,
     public createdAt: Date,
-    public reviewStatus: "not_submitted" = "not_submitted",
+    public reviewStatus: "not_submitted" | "in_review" | "approved" | "changes_requested" = "not_submitted",
+  ) {}
+}
+
+// a review belongs to one fixed version
+export class DocumentReview {
+  constructor(
+    public id: UUID,
+    public proposalId: UUID,
+    public versionId: UUID,
+    public requestedByUserId: UUID,
+    public reviewerUserId: UUID,
+    public dueDate: string | null,
+    public instructions: string | null,
+    public response: string | null,
+    public status: "pending" | "approved" | "changes_requested" | "cancelled",
+    public resolvedAt: Date | null,
+    public createdAt: Date,
+    public updatedAt: Date,
   ) {}
 }
