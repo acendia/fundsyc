@@ -8,6 +8,7 @@ const dateTime = (value: string | null) => value ? new Date(value).toLocaleStrin
 
 export function TasksPage({ proposalId, refreshKey, apiFetch, onBusyChange, onAccessLost }: Props) {
   const [data, setData] = useState<TaskList | null>(null);
+  const [view, setView] = useState<"board" | "list">("board");
   const [selected, setSelected] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -40,6 +41,11 @@ export function TasksPage({ proposalId, refreshKey, apiFetch, onBusyChange, onAc
     finally { setBusy(false); }
   }
   const task = data?.tasks.find(t => t.id === selected);
+  function openTask(id: string) {
+    setSelected(id);
+    setEditing(false);
+    setMessage("");
+  }
   function back() { setSelected(null); setEditing(false); setCreating(false); setMessage(""); }
   return <main>
     <h1>Tasks</h1>
@@ -61,8 +67,30 @@ export function TasksPage({ proposalId, refreshKey, apiFetch, onBusyChange, onAc
         </>}
       </section> : <><p>This task is no longer available.</p><button onClick={back}>Back to tasks</button></> : <>
         <h2>Active tasks</h2>{data.can_add && <p><button type="button" disabled={busy} onClick={() => { setCreating(true); setMessage(""); }}>Add task</button></p>}
-        {!data.tasks.length ? <p>No tasks yet.</p> : <table><thead><tr><th>Task</th><th>Progress</th><th>Priority</th><th>Partner</th><th>Assignee</th><th>Assigned</th><th>Due date</th><th>Comments</th><th>Actions</th></tr></thead><tbody>{data.tasks.map(t => <tr key={t.id}>
-          <td>{t.title}</td><td>{label(taskProgressOptions, t.progress)}</td><td>{label(taskPriorityOptions, t.priority)}</td><td>{t.partner_name}</td><td>{t.assignee_name ?? "Unassigned"}</td><td>{dateTime(t.assigned_at)}</td><td>{t.due_date ?? "None"}</td><td>{t.comment_count}</td><td><button type="button" disabled={busy} onClick={() => { setSelected(t.id); setMessage(""); }}>Details</button></td>
+        <p role="group" aria-label="Task view">
+          <button type="button" aria-pressed={view === "board"} disabled={busy} onClick={() => setView("board")}>Board</button>{" "}
+          <button type="button" aria-pressed={view === "list"} disabled={busy} onClick={() => setView("list")}>List</button>
+        </p>
+        {view === "board" ? <div className="task-board" aria-label="Task board">
+          {taskProgressOptions.map(option => {
+            const tasks = data.tasks.filter(item => item.progress === option.value);
+            return <section className="task-column" key={option.value} aria-labelledby={`task-column-${option.value}`}>
+              <h3 id={`task-column-${option.value}`}>{option.value === "todo" ? "TODO" : option.label.toUpperCase()} ({tasks.length})</h3>
+              {tasks.length === 0 && <p>No tasks.</p>}
+              {tasks.map(item => <article className="task-card" key={item.id}>
+                <p>Priority: <strong>{label(taskPriorityOptions, item.priority)}</strong></p>
+                <h4><button type="button" disabled={busy} onClick={() => openTask(item.id)}>{item.title}</button></h4>
+                {item.description && <p className="task-description">{item.description.length > 180 ? `${item.description.slice(0, 180).trimEnd()}…` : item.description}</p>}
+                <p>Partner: {item.partner_name}</p>
+                <p>Assignee: {item.assignee_name ?? "Unassigned"}</p>
+                <p>Assigned: {dateTime(item.assigned_at)}</p>
+                <p>Due date: {item.due_date ?? "None"}</p>
+                <p>Comments: {item.comment_count}</p>
+              </article>)}
+            </section>;
+          })}
+        </div> : !data.tasks.length ? <p>No tasks yet.</p> : <table><thead><tr><th>Task</th><th>Progress</th><th>Priority</th><th>Partner</th><th>Assignee</th><th>Assigned</th><th>Due date</th><th>Comments</th><th>Actions</th></tr></thead><tbody>{data.tasks.map(t => <tr key={t.id}>
+          <td>{t.title}</td><td>{label(taskProgressOptions, t.progress)}</td><td>{label(taskPriorityOptions, t.priority)}</td><td>{t.partner_name}</td><td>{t.assignee_name ?? "Unassigned"}</td><td>{dateTime(t.assigned_at)}</td><td>{t.due_date ?? "None"}</td><td>{t.comment_count}</td><td><button type="button" disabled={busy} onClick={() => openTask(t.id)}>Details</button></td>
         </tr>)}</tbody></table>}
       </>}
     </>}

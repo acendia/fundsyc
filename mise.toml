@@ -1,0 +1,6 @@
+[tools]
+node = "22"
+
+[tasks.setup]
+description = "install fundsyc dependencies and check the build"
+run = ["npm ci --include=dev", "npm run build"]
