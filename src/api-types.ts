@@ -137,3 +137,20 @@ export type TaskList = {
   partners: TaskPartner[];
   tasks: TaskRecord[];
 };
+
+export type TaskCommentRecord = {
+  id: string;
+  author_name: string;
+  body: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  removed_at: string | null;
+  can_edit: boolean;
+  can_remove: boolean;
+};
+export type TaskActivityRecord = {
+  can_comment: boolean;
+  comments: TaskCommentRecord[];
+  history: { id: string; action: string; actor_name: string; created_at: string; metadata: Record<string, unknown> }[];
+};

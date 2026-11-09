@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canReadTasks, canReadTask, canCreateTask, canEditTask, canAssignTask, canUpdateTask, canRemoveTask, canCommentOnTask } from "./task-permissions.mjs";
+import { canReadTasks, canReadTask, canCreateTask, canEditTask, canAssignTask, canUpdateTask, canRemoveTask, canCommentOnTask, canEditTaskComment, canRemoveTaskComment } from "./task-permissions.mjs";
 const proposal = { id: "proposal", status: "draft", coordinator_partner_id: "athens" };
 const actor = (role, partner = "harokopio") => ({ proposal_id: proposal.id, user_id: "me", partner_id: partner, access_role: role, membership_status: "active", user_status: "active", partner_status: "active" });
 const task = { id: "task", proposal_id: proposal.id, partner_id: "harokopio", assignee_user_id: "me", status: "active" };
@@ -49,5 +49,22 @@ test("viewers and read-only proposals reject every task write", () => {
     assert.equal(canReadTask(member, p, task), true);
     for (const check of [canCreateTask, canEditTask, canAssignTask, canRemoveTask, canCommentOnTask]) assert.equal(check(member, p, task), false);
     assert.equal(canUpdateTask(member, p, task, task), false);
+  }
+});
+
+test("comment ownership and coordinator moderation require current writable access", () => {
+  const comment = { proposal_id: proposal.id, task_id: task.id, status: "active", author_user_id: "me" };
+  const contributor = actor("contributor");
+  assert.equal(canEditTaskComment(contributor, proposal, task, comment), true);
+  assert.equal(canRemoveTaskComment(contributor, proposal, task, comment), true);
+  assert.equal(canEditTaskComment(contributor, proposal, task, { ...comment, author_user_id: "other" }), false);
+  assert.equal(canRemoveTaskComment(actor("partner_admin"), proposal, task, { ...comment, author_user_id: "other" }), false);
+  assert.equal(canRemoveTaskComment(actor("coordinator_manager", "athens"), proposal, task, { ...comment, author_user_id: "other" }), true);
+  for (const check of [canEditTaskComment, canRemoveTaskComment]) {
+    assert.equal(check(actor("viewer"), proposal, task, comment), false);
+    assert.equal(check(contributor, { ...proposal, status: "submitted" }, task, comment), false);
+    assert.equal(check(contributor, proposal, task, { ...comment, task_id: "other" }), false);
+    assert.equal(check(contributor, proposal, task, { ...comment, status: "removed" }), false);
+    assert.equal(check({ ...contributor, membership_status: "revoked" }, proposal, task, comment), false);
   }
 });

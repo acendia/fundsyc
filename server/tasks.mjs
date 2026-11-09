@@ -1,3 +1,4 @@
+import { addTaskActivityRoutes, auditTaskEvent } from "./task-activity.mjs";
 import { randomUUID } from "node:crypto";
 import { loadTaskPermissionContext, canReadTasks, canChangeTasks, canCreateTask, canEditTask, canAssignTask, canUpdateTask, canRemoveTask } from "./task-permissions.mjs";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -5,6 +6,7 @@ const progress = ["todo", "in_progress", "in_review", "completed"];
 const priorities = ["low", "medium", "high", "urgent"];
 
 export function addTaskRoutes(app) {
+  addTaskActivityRoutes(app);
   const base = "/api/proposals/:proposalId/tasks";
   app.get(base, async (req, res) => {
     if (!uuid.test(req.params.proposalId)) return res.status(404).json({ error: "Proposal not found." });
@@ -32,8 +34,10 @@ export function addTaskRoutes(app) {
       const current = taskId ? (await c.query("select *,due_date::text as due_date from tasks where id=$1 and proposal_id=$2 and status='active' for update", [taskId, proposalId])).rows[0] : null;
       if (taskId && !current) return await fail(404, "Task not found.");
       const id = taskId ?? randomUUID();
+      let metadata = {};
       if (action === "remove") {
         if (!canRemoveTask(actor, proposal, current)) return await fail(403, "You cannot remove this task.");
+        metadata = { title: current.title };
         await c.query("update tasks set status='removed',removed_at=now(),removed_by_user_id=$1,updated_by_user_id=$1,updated_at=now() where id=$2 and proposal_id=$3", [req.userId, id, proposalId]);
       } else {
         const body = req.body;
@@ -55,16 +59,29 @@ export function addTaskRoutes(app) {
             if (!member.rowCount) return await fail(400, "Choose an active member of this partner.");
           }
         }
+        const changes = {};
+        next.title = next.title.trim();
+        next.description = next.description?.trim() || null;
+        for (const field of ["title", "description", "priority", "due_date"]) {
+          if (current && current[field] !== next[field]) changes[field] = { before: current[field], after: next[field] };
+        }
+        metadata = current ? { changes } : { title: next.title };
         if (!current) await c.query("insert into tasks(id,proposal_id,partner_id,title,description,progress,priority,assignee_user_id,assigned_by_user_id,assigned_at,due_date,created_by_user_id,updated_by_user_id) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12)", [id, proposalId, next.partner_id, next.title.trim(), next.description?.trim() || null, next.progress, next.priority, next.assignee_user_id, next.assignee_user_id ? req.userId : null, next.assignee_user_id ? new Date() : null, next.due_date, req.userId]);
         else {
           await c.query("update tasks set title=$1,description=$2,progress=$3,priority=$4,due_date=$5,updated_by_user_id=$6,updated_at=now() where id=$7 and proposal_id=$8", [next.title.trim(), next.description?.trim() || null, next.progress, next.priority, next.due_date, req.userId, id, proposalId]);
           // leave old assignment dates alone when only editing task information
           if (assignmentChanged) await c.query("update tasks set partner_id=$1,assignee_user_id=$2,assigned_by_user_id=$3,assigned_at=$4 where id=$5 and proposal_id=$6", [next.partner_id, next.assignee_user_id, next.assignee_user_id ? req.userId : null, next.assignee_user_id ? new Date() : null, id, proposalId]);
-          if (assignmentChanged) await audit(c, proposalId, req.userId, "task.reassigned", id);
-          if (current.progress !== next.progress) await audit(c, proposalId, req.userId, "task.progress_changed", id);
+          if (assignmentChanged) {
+            const names = async (value) => {
+              const result = await c.query("select o.legal_name as partner,u.display_name as assignee from consortium_partners cp join organizations o on o.id=cp.organization_id left join users u on u.id=$2 where cp.id=$1", [value.partner_id, value.assignee_user_id]);
+              return result.rows[0];
+            };
+            await auditTaskEvent(c, proposalId, req.userId, "task.reassigned", id, { before: await names(current), after: await names(next) });
+          }
+          if (current.progress !== next.progress) await auditTaskEvent(c, proposalId, req.userId, "task.progress_changed", id, { before: current.progress, after: next.progress });
         }
       }
-      await audit(c, proposalId, req.userId, `task.${action === "create" ? "created" : action === "remove" ? "removed" : "updated"}`, id);
+      if (action !== "update" || Object.keys(metadata.changes).length > 0) await auditTaskEvent(c, proposalId, req.userId, `task.${action === "create" ? "created" : action === "remove" ? "removed" : "updated"}`, id, metadata);
       await c.query("commit"); res.status(action === "create" ? 201 : 200).json({ id });
     } catch (error) { if (c) await c.query("rollback").catch(() => {}); console.error("task save failed", error); res.status(500).json({ error: "Could not save task." }); }
     finally { c?.release(); }
@@ -72,7 +89,4 @@ export function addTaskRoutes(app) {
   app.post(base, (req, res) => save(req, res, "create"));
   app.patch(`${base}/:taskId`, (req, res) => save(req, res, "update"));
   app.delete(`${base}/:taskId`, (req, res) => save(req, res, "remove"));
-}
-async function audit(c, proposalId, userId, action, id) {
-  await c.query("insert into audit_events(id,proposal_id,actor_user_id,action,entity_type,entity_id) values($1,$2,$3,$4,'task',$5)", [randomUUID(), proposalId, userId, action, id]);
 }

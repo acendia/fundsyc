@@ -1,4 +1,5 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { TaskActivity } from "./TaskActivity";
 import { taskProgressOptions, taskPriorityOptions } from "./models";
 import type { ApiFetch, TaskList, TaskRecord } from "./api-types";
 
@@ -23,6 +24,7 @@ export function TasksPage({ proposalId, refreshKey, apiFetch, onBusyChange, onAc
   const [revision, setRevision] = useState(0);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const refreshTasks = useCallback(() => setRevision(value => value + 1), []);
   const path = `/api/proposals/${proposalId}/tasks`;
   useEffect(() => { onBusyChange(busy); }, [busy, onBusyChange]);
   useEffect(() => {
@@ -98,9 +100,10 @@ export function TasksPage({ proposalId, refreshKey, apiFetch, onBusyChange, onAc
           <p>Partner: {task.partner_name}</p><p>Assignee: {task.assignee_name ?? "Unassigned"}</p>
           <p>Assigned: {dateTime(task.assigned_at)}</p><p>Due date: {task.due_date ?? "None"}</p>
           <p>Created by {task.created_by_name} on {dateTime(task.created_at)}</p><p>Last modified by {task.updated_by_name} on {dateTime(task.updated_at)}</p>
-          <p>Comments: {task.comment_count}.</p>
+
           {task.can_edit && <button type="button" disabled={busy} onClick={() => { setEditing(true); setMessage(""); }}>Edit task</button>}{" "}
           {task.can_remove && <button type="button" disabled={busy} onClick={() => { if (window.confirm(`Mark ${task.title} as removed? Its comments will be kept.`)) void save("DELETE", undefined, task.id); }}>Remove task</button>}
+          <TaskActivity key={task.id} proposalId={proposalId} taskId={task.id} refreshKey={revision + refreshKey} apiFetch={apiFetch} busy={busy} onBusyChange={setBusy} onChange={refreshTasks} onAccessLost={refreshTasks} />
         </>}
       </section> : <><p>This task is no longer available.</p><button onClick={back}>Back to tasks</button></> : <>
         <h2>Active tasks</h2>{data.can_add && <p><button type="button" disabled={busy} onClick={() => { setCreating(true); setMessage(""); }}>Add task</button></p>}

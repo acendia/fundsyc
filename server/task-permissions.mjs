@@ -68,3 +68,14 @@ export function canUpdateTask(actor, proposal, current, next) {
 export function canCommentOnTask(actor, proposal, task) {
   return canChangeTasks(actor, proposal) && isActiveTask(task, proposal);
 }
+
+export function canEditTaskComment(actor, proposal, task, comment) {
+  return canCommentOnTask(actor, proposal, task) && Boolean(comment && comment.status === "active"
+    && comment.proposal_id === proposal.id && comment.task_id === task.id && comment.author_user_id === actor.user_id);
+}
+
+export function canRemoveTaskComment(actor, proposal, task, comment) {
+  return canCommentOnTask(actor, proposal, task) && Boolean(comment && comment.status === "active"
+    && comment.proposal_id === proposal.id && comment.task_id === task.id
+    && (comment.author_user_id === actor.user_id || isCoordinator(actor, proposal)));
+}
