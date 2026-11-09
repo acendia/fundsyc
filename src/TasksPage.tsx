@@ -9,6 +9,13 @@ const dateTime = (value: string | null) => value ? new Date(value).toLocaleStrin
 export function TasksPage({ proposalId, refreshKey, apiFetch, onBusyChange, onAccessLost }: Props) {
   const [data, setData] = useState<TaskList | null>(null);
   const [view, setView] = useState<"board" | "list">("board");
+  const [search, setSearch] = useState("");
+  const [progressFilter, setProgressFilter] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState("");
+  const [partnerFilter, setPartnerFilter] = useState("");
+  const [assigneeFilter, setAssigneeFilter] = useState("");
+  const [myTasks, setMyTasks] = useState(false);
+  const [overdueOnly, setOverdueOnly] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -39,6 +46,36 @@ export function TasksPage({ proposalId, refreshKey, apiFetch, onBusyChange, onAc
       setMessage(method === "DELETE" ? "Task marked as removed." : "Task saved."); setRevision(r => r + 1);
     } catch (error) { setMessage(error instanceof Error ? error.message : "Could not save task."); }
     finally { setBusy(false); }
+  }
+  const now = new Date();
+  // due dates are calendar dates, use the local day instead of converting to utc
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const searchTitle = search.trim().toLowerCase();
+  const filteredTasks = data?.tasks.filter(item => {
+    if (!item.title.toLowerCase().includes(searchTitle)) return false;
+    if (progressFilter && item.progress !== progressFilter) return false;
+    if (priorityFilter && item.priority !== priorityFilter) return false;
+    if (partnerFilter && item.partner_id !== partnerFilter) return false;
+    if (assigneeFilter === "unassigned" && item.assignee_user_id !== null) return false;
+    if (assigneeFilter && assigneeFilter !== "unassigned" && item.assignee_user_id !== assigneeFilter) return false;
+    if (myTasks && item.assignee_user_id !== data.current_user_id) return false;
+    if (overdueOnly && (!item.due_date || item.due_date >= today || item.progress === "completed")) return false;
+    return true;
+  }) ?? [];
+  const partnerOptions = new Map(data?.partners.map(partner => [partner.id, partner.legal_name]));
+  const assigneeOptions = new Map(data?.partners.flatMap(partner => partner.members.map(member => [member.user_id, member.display_name] as const)));
+  for (const item of data?.tasks ?? []) {
+    partnerOptions.set(item.partner_id, item.partner_name);
+    if (item.assignee_user_id) assigneeOptions.set(item.assignee_user_id, item.assignee_name ?? "Previous assignee");
+  }
+  function clearFilters() {
+    setSearch("");
+    setProgressFilter("");
+    setPriorityFilter("");
+    setPartnerFilter("");
+    setAssigneeFilter("");
+    setMyTasks(false);
+    setOverdueOnly(false);
   }
   const task = data?.tasks.find(t => t.id === selected);
   function openTask(id: string) {
@@ -71,9 +108,29 @@ export function TasksPage({ proposalId, refreshKey, apiFetch, onBusyChange, onAc
           <button type="button" aria-pressed={view === "board"} disabled={busy} onClick={() => setView("board")}>Board</button>{" "}
           <button type="button" aria-pressed={view === "list"} disabled={busy} onClick={() => setView("list")}>List</button>
         </p>
+        <section aria-label="Task filters">
+          <p><label>Search title <input type="search" value={search} onChange={event => setSearch(event.target.value)} /></label></p>
+          <p><label>Progress filter <select value={progressFilter} onChange={event => setProgressFilter(event.target.value)}>
+            <option value="">All progress</option>{taskProgressOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select></label>{" "}
+          <label>Priority filter <select value={priorityFilter} onChange={event => setPriorityFilter(event.target.value)}>
+            <option value="">All priorities</option>{taskPriorityOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select></label></p>
+          <p><label>Partner filter <select value={partnerFilter} onChange={event => setPartnerFilter(event.target.value)}>
+            <option value="">All partners</option>{Array.from(partnerOptions).sort((a, b) => a[1].localeCompare(b[1])).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+          </select></label>{" "}
+          <label>Assignee filter <select value={assigneeFilter} onChange={event => setAssigneeFilter(event.target.value)}>
+            <option value="">All assignees</option><option value="unassigned">Unassigned</option>{Array.from(assigneeOptions).sort((a, b) => a[1].localeCompare(b[1])).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+          </select></label></p>
+          <p><label><input type="checkbox" checked={myTasks} onChange={event => setMyTasks(event.target.checked)} /> My tasks</label>{" "}
+          <label><input type="checkbox" checked={overdueOnly} onChange={event => setOverdueOnly(event.target.checked)} /> Overdue</label></p>
+          <button type="button" onClick={clearFilters}>Clear filters</button>
+        </section>
+        <p role="status">Showing {filteredTasks.length} of {data.tasks.length} tasks.</p>
+        {data.tasks.length === 0 ? <p>No tasks yet.</p> : filteredTasks.length === 0 && <p>No tasks match these filters.</p>}
         {view === "board" ? <div className="task-board" aria-label="Task board">
           {taskProgressOptions.map(option => {
-            const tasks = data.tasks.filter(item => item.progress === option.value);
+            const tasks = filteredTasks.filter(item => item.progress === option.value);
             return <section className="task-column" key={option.value} aria-labelledby={`task-column-${option.value}`}>
               <h3 id={`task-column-${option.value}`}>{option.value === "todo" ? "TODO" : option.label.toUpperCase()} ({tasks.length})</h3>
               {tasks.length === 0 && <p>No tasks.</p>}
@@ -89,7 +146,7 @@ export function TasksPage({ proposalId, refreshKey, apiFetch, onBusyChange, onAc
               </article>)}
             </section>;
           })}
-        </div> : !data.tasks.length ? <p>No tasks yet.</p> : <table><thead><tr><th>Task</th><th>Progress</th><th>Priority</th><th>Partner</th><th>Assignee</th><th>Assigned</th><th>Due date</th><th>Comments</th><th>Actions</th></tr></thead><tbody>{data.tasks.map(t => <tr key={t.id}>
+        </div> : !filteredTasks.length ? null : <table><thead><tr><th>Task</th><th>Progress</th><th>Priority</th><th>Partner</th><th>Assignee</th><th>Assigned</th><th>Due date</th><th>Comments</th><th>Actions</th></tr></thead><tbody>{filteredTasks.map(t => <tr key={t.id}>
           <td>{t.title}</td><td>{label(taskProgressOptions, t.progress)}</td><td>{label(taskPriorityOptions, t.priority)}</td><td>{t.partner_name}</td><td>{t.assignee_name ?? "Unassigned"}</td><td>{dateTime(t.assigned_at)}</td><td>{t.due_date ?? "None"}</td><td>{t.comment_count}</td><td><button type="button" disabled={busy} onClick={() => openTask(t.id)}>Details</button></td>
         </tr>)}</tbody></table>}
       </>}
