@@ -1,4 +1,4 @@
-import { pgTable, text, uuid, timestamp, integer, bigint, date } from "drizzle-orm/pg-core";
+import { pgTable, text, uuid, timestamp, integer, bigint, date, boolean } from "drizzle-orm/pg-core";
 
 // these mappings describe existing columns; db/schema.sql owns the database constraints
 export const users = pgTable("users", { id: uuid("id"), displayName: text("display_name"), email: text("email"), emailKey: text("email_key"), status: text("status") });
@@ -85,6 +85,64 @@ export const taskComments = pgTable("task_comments", {
   taskId: uuid("task_id"),
   authorUserId: uuid("author_user_id"),
   body: text("body"),
+  createdAt: timestamp("created_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
+  status: text("status"),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
+  removedByUserId: uuid("removed_by_user_id"),
+});
+
+export const scheduleWorkstreams = pgTable("schedule_workstreams", {
+  id: uuid("id"),
+  proposalId: uuid("proposal_id"),
+  leadPartnerId: uuid("lead_partner_id"),
+  title: text("title"),
+  description: text("description"),
+  startDate: date("start_date"),
+  endDate: date("end_date"),
+  progress: text("progress"),
+  createdByUserId: uuid("created_by_user_id"),
+  updatedByUserId: uuid("updated_by_user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
+  status: text("status"),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
+  removedByUserId: uuid("removed_by_user_id"),
+});
+
+export const scheduleMilestones = pgTable("schedule_milestones", {
+  id: uuid("id"),
+  proposalId: uuid("proposal_id"),
+  leadPartnerId: uuid("lead_partner_id"),
+  title: text("title"),
+  description: text("description"),
+  dueDate: date("due_date"),
+  progress: text("progress"),
+  createdByUserId: uuid("created_by_user_id"),
+  updatedByUserId: uuid("updated_by_user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
+  status: text("status"),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
+  removedByUserId: uuid("removed_by_user_id"),
+});
+
+export const scheduleEvents = pgTable("schedule_events", {
+  id: uuid("id"),
+  proposalId: uuid("proposal_id"),
+  partnerId: uuid("partner_id"),
+  organizerUserId: uuid("organizer_user_id"),
+  workstreamId: uuid("workstream_id"),
+  title: text("title"),
+  eventType: text("event_type"),
+  eventDate: date("event_date"),
+  allDay: boolean("all_day"),
+  startsAt: timestamp("starts_at", { withTimezone: true }),
+  endsAt: timestamp("ends_at", { withTimezone: true }),
+  timeZone: text("time_zone"),
+  notes: text("notes"),
+  createdByUserId: uuid("created_by_user_id"),
+  updatedByUserId: uuid("updated_by_user_id"),
   createdAt: timestamp("created_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }),
   status: text("status"),

@@ -329,3 +329,94 @@ export class TaskComment {
     public removedByUserId: UUID | null = null,
   ) {}
 }
+
+export const scheduleProgressOptions = [
+  { value: "planned", label: "Planned" },
+  { value: "in_progress", label: "In progress" },
+  { value: "at_risk", label: "At risk" },
+  { value: "completed", label: "Completed" },
+] as const;
+
+export const scheduleEventTypeOptions = [
+  { value: "meeting", label: "Meeting" },
+  { value: "deadline", label: "Deadline" },
+  { value: "reminder", label: "Reminder" },
+] as const;
+
+export type ScheduleProgress = (typeof scheduleProgressOptions)[number]["value"];
+export type ScheduleEventType = (typeof scheduleEventTypeOptions)[number]["value"];
+export type ScheduleItemStatus = "active" | "removed";
+
+// date-only values stay on the same calendar day for everyone
+export type ScheduleEventTiming =
+  | { allDay: true; date: string }
+  | {
+      allDay: false;
+      date: string;
+      timeZone: string;
+      startsAt: Date;
+      endsAt: Date | null;
+    };
+
+// a period of work led by one proposal partner
+export class ScheduleWorkstream {
+  constructor(
+    public id: UUID,
+    public proposalId: UUID,
+    public leadPartnerId: UUID,
+    public title: string,
+    public description: string | null,
+    public startDate: string,
+    public endDate: string,
+    public createdByUserId: UUID,
+    public updatedByUserId: UUID,
+    public createdAt: Date,
+    public updatedAt: Date,
+    public progress: ScheduleProgress = "planned",
+    public status: ScheduleItemStatus = "active",
+    public removedAt: Date | null = null,
+    public removedByUserId: UUID | null = null,
+  ) {}
+}
+
+// a single-date goal on the proposal timeline
+export class ScheduleMilestone {
+  constructor(
+    public id: UUID,
+    public proposalId: UUID,
+    public leadPartnerId: UUID,
+    public title: string,
+    public description: string | null,
+    public dueDate: string,
+    public createdByUserId: UUID,
+    public updatedByUserId: UUID,
+    public createdAt: Date,
+    public updatedAt: Date,
+    public progress: ScheduleProgress = "planned",
+    public status: ScheduleItemStatus = "active",
+    public removedAt: Date | null = null,
+    public removedByUserId: UUID | null = null,
+  ) {}
+}
+
+// organizer and creator can be different people
+export class ScheduleEvent {
+  constructor(
+    public id: UUID,
+    public proposalId: UUID,
+    public partnerId: UUID,
+    public organizerUserId: UUID,
+    public title: string,
+    public eventType: ScheduleEventType,
+    public timing: ScheduleEventTiming,
+    public notes: string | null,
+    public workstreamId: UUID | null,
+    public createdByUserId: UUID,
+    public updatedByUserId: UUID,
+    public createdAt: Date,
+    public updatedAt: Date,
+    public status: ScheduleItemStatus = "active",
+    public removedAt: Date | null = null,
+    public removedByUserId: UUID | null = null,
+  ) {}
+}
