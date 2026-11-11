@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { SchedulePage } from "./SchedulePage";
 import { TasksPage } from "./TasksPage";
 import { DocumentsPage } from "./DocumentsPage";
 import { createRoot } from "react-dom/client";
@@ -61,7 +62,7 @@ type Invitation = { id: string; title: string; legal_name: string; kind: string;
 function App() {
   const [proposals, setProposals] = useState<Proposal[] | null>(null);
   const [activeProposalId, setActiveProposalId] = useState<string | null>(null);
-  const [page, setPage] = useState<"consortium" | "documents" | "tasks">("consortium");
+  const [page, setPage] = useState<"consortium" | "documents" | "tasks" | "schedule">("consortium");
   const [revision, setRevision] = useState(0);
   const [error, setError] = useState("");
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -122,7 +123,7 @@ function App() {
     finally { setInviteBusy(false); }
   }
   const activeProposal = proposals?.find((proposal) => proposal.id === activeProposalId);
-  function navigate(next: "consortium" | "documents" | "tasks") { setPageBusy(false); setPage(next); refresh(); }
+  function navigate(next: "consortium" | "documents" | "tasks" | "schedule") { setPageBusy(false); setPage(next); refresh(); }
   return <div className="workspace">
     <aside className="workspace-sidebar">
       <h2>FundSyc</h2>
@@ -130,6 +131,7 @@ function App() {
         <button type="button" aria-current={page === "consortium" ? "page" : undefined} disabled={!activeProposal || busy} onClick={() => navigate("consortium")}>Consortium</button>
         <button type="button" aria-current={page === "documents" ? "page" : undefined} disabled={!activeProposal || busy} onClick={() => navigate("documents")}>Documents</button>
         <button type="button" aria-current={page === "tasks" ? "page" : undefined} disabled={!activeProposal || busy} onClick={() => navigate("tasks")}>Tasks</button>
+        <button type="button" aria-current={page === "schedule" ? "page" : undefined} disabled={!activeProposal || busy} onClick={() => navigate("schedule")}>Schedule</button>
       </nav>
     </aside>
     <div className="workspace-content">
@@ -164,7 +166,7 @@ function App() {
           <p><label>City <input name="city" /></label></p><button>Create proposal</button>
         </fieldset></form>{createMessage && <p role="alert">{createMessage}</p>}
       </section>}
-      {activeProposal && (page === "tasks" ? <TasksPage key={`tasks:${activeProposal.id}`} proposalId={activeProposal.id} refreshKey={revision} apiFetch={apiFetch} onBusyChange={setPageBusy} onAccessLost={refresh} /> : page === "documents" ? <DocumentsPage key={`documents:${activeProposal.id}`} proposalId={activeProposal.id} refreshKey={revision} apiFetch={apiFetch} onBusyChange={setPageBusy} onAccessLost={refresh} /> : <ConsortiumPage key={`consortium:${activeProposal.id}`} proposal={activeProposal} apiFetch={apiFetch} onChange={refresh} onBusyChange={setPageBusy} />)}
+      {activeProposal && (page === "schedule" ? <SchedulePage key={`schedule:${activeProposal.id}`} proposalId={activeProposal.id} refreshKey={revision} apiFetch={apiFetch} onBusyChange={setPageBusy} onAccessLost={refresh} /> : page === "tasks" ? <TasksPage key={`tasks:${activeProposal.id}`} proposalId={activeProposal.id} refreshKey={revision} apiFetch={apiFetch} onBusyChange={setPageBusy} onAccessLost={refresh} /> : page === "documents" ? <DocumentsPage key={`documents:${activeProposal.id}`} proposalId={activeProposal.id} refreshKey={revision} apiFetch={apiFetch} onBusyChange={setPageBusy} onAccessLost={refresh} /> : <ConsortiumPage key={`consortium:${activeProposal.id}`} proposal={activeProposal} apiFetch={apiFetch} onChange={refresh} onBusyChange={setPageBusy} />)}
     </div>
   </div>;
 }

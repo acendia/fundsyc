@@ -1,3 +1,4 @@
+import { addScheduleRoutes } from "./schedule.mjs";
 import express from "express";
 import { addTaskRoutes } from "./tasks.mjs";
 import { createDocumentStorage } from "./document-storage.mjs";
@@ -183,6 +184,7 @@ app.get("/api/proposals", async (request, response) => {
   }
 });
 
+addScheduleRoutes(app);
 addTaskRoutes(app);
 addDocumentRoutes(app, createDocumentStorage(authUrl, storageKey, storageBucket));
 addDocumentReviewRoutes(app);
