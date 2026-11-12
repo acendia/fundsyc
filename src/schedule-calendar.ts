@@ -5,7 +5,7 @@ export type CalendarSourceItem = {
   status?: string;
   progress?: string;
   event_date?: string;
-  due_date?: string;
+  due_date?: string | null;
   all_day?: boolean;
   starts_at?: string | null;
   ends_at?: string | null;
@@ -13,7 +13,7 @@ export type CalendarSourceItem = {
 
 export type CalendarEntry = {
   id: string;
-  kind: "events" | "milestones";
+  kind: "events" | "milestones" | "tasks";
   title: string;
   partner: string;
   date: string;
@@ -67,7 +67,7 @@ export function monthDays(month: string) {
   return days;
 }
 
-export function calendarEntries(events: CalendarSourceItem[], milestones: CalendarSourceItem[], timeZone: string) {
+export function calendarEntries(events: CalendarSourceItem[], milestones: CalendarSourceItem[], timeZone: string, tasks: CalendarSourceItem[] = []) {
   const entries: CalendarEntry[] = [];
   for (const event of events) {
     if (event.status === "removed" || !event.event_date) continue;
@@ -91,6 +91,14 @@ export function calendarEntries(events: CalendarSourceItem[], milestones: Calend
       startsAt: null, endsAt: null, completed: milestone.progress === "completed",
     });
   }
+  for (const task of tasks) {
+    if (task.status === "removed" || !task.due_date) continue;
+    entries.push({
+      id: task.id, kind: "tasks", title: task.title, partner: task.partner_name,
+      date: task.due_date, lastDate: task.due_date, time: null, endTime: null, endDate: null,
+      startsAt: null, endsAt: null, completed: task.progress === "completed",
+    });
+  }
   return entries.sort((a, b) => a.date.localeCompare(b.date)
     || (a.startsAt ?? -Infinity) - (b.startsAt ?? -Infinity)
     || a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
@@ -108,6 +116,7 @@ export function upcomingEntries(entries: CalendarEntry[], now: Date, timeZone: s
 
 export function entryTime(entry: CalendarEntry) {
   if (entry.kind === "milestones") return "Milestone" + (entry.completed ? " · Completed" : "");
+  if (entry.kind === "tasks") return "Task due" + (entry.completed ? " · Completed" : "");
   if (!entry.time) return "All day";
   const end = entry.endTime
     ? "–" + (entry.endDate !== entry.date ? entry.endDate + " " : "") + entry.endTime

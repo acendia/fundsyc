@@ -84,3 +84,18 @@ test("removed items are excluded and all-day entries sort before timed entries",
     [{ ...milestone, status: "removed" }], "Europe/Athens");
   assert.deepEqual(entries.map(e => e.id), ["deadline", "meeting"]);
 });
+
+test("task deadlines stay date-only, follow edits, and completed tasks leave Upcoming", () => {
+  const task = { id: "task", title: "Draft annex", partner_name: "Athens", due_date: "2027-05-17", progress: "todo", status: "active" };
+  const now = new Date("2027-05-17T12:00Z");
+  const entries = calendarEntries([], [], "America/Los_Angeles", [task]);
+  assert.equal(entries[0].kind, "tasks");
+  assert.equal(entries[0].date, task.due_date);
+  assert.equal(entryTime(entries[0]), "Task due");
+  assert.equal(upcomingEntries(entries, now, "America/Los_Angeles").length, 1);
+  const completed = calendarEntries([], [], "UTC", [{ ...task, progress: "completed" }]);
+  assert.equal(completed.length, 1);
+  assert.equal(upcomingEntries(completed, now, "UTC").length, 0);
+  assert.equal(calendarEntries([], [], "UTC", [{ ...task, status: "removed" }, { ...task, due_date: null }]).length, 0);
+  assert.equal(calendarEntries([], [], "UTC", [{ ...task, due_date: "2027-05-18" }])[0].date, "2027-05-18");
+});

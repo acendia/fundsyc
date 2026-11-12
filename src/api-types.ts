@@ -103,6 +103,9 @@ export type DocumentVersionRecord = {
 };
 
 export type TaskRecord = {
+  workstream_id: string | null;
+  workstream_title: string | null;
+  workstream_status: string | null;
   id: string;
   title: string;
   description: string | null;
@@ -130,6 +133,7 @@ export type TaskPartner = {
   members: { user_id: string; display_name: string }[];
 };
 export type TaskList = {
+  workstreams: { id: string; title: string }[];
   proposal: { id: string; status: string };
   current_user_id: string;
   can_add: boolean;

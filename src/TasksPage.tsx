@@ -3,11 +3,11 @@ import { TaskActivity } from "./TaskActivity";
 import { taskProgressOptions, taskPriorityOptions } from "./models";
 import type { ApiFetch, TaskList, TaskRecord } from "./api-types";
 
-type Props = { proposalId: string; refreshKey: number; apiFetch: ApiFetch; onBusyChange: (busy: boolean) => void; onAccessLost: () => void };
+type Props = { initialTaskId?: string; proposalId: string; refreshKey: number; apiFetch: ApiFetch; onBusyChange: (busy: boolean) => void; onAccessLost: () => void };
 const label = (options: readonly { value: string; label: string }[], value: string) => options.find(o => o.value === value)?.label ?? value;
 const dateTime = (value: string | null) => value ? new Date(value).toLocaleString() : "Not assigned";
 
-export function TasksPage({ proposalId, refreshKey, apiFetch, onBusyChange, onAccessLost }: Props) {
+export function TasksPage({ initialTaskId, proposalId, refreshKey, apiFetch, onBusyChange, onAccessLost }: Props) {
   const [data, setData] = useState<TaskList | null>(null);
   const [view, setView] = useState<"board" | "list">("board");
   const [search, setSearch] = useState("");
@@ -17,7 +17,7 @@ export function TasksPage({ proposalId, refreshKey, apiFetch, onBusyChange, onAc
   const [assigneeFilter, setAssigneeFilter] = useState("");
   const [myTasks, setMyTasks] = useState(false);
   const [overdueOnly, setOverdueOnly] = useState(false);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(initialTaskId ?? null);
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -98,6 +98,7 @@ export function TasksPage({ proposalId, refreshKey, apiFetch, onBusyChange, onAc
         {editing && task.can_edit ? <TaskForm key={task.id} task={task} data={data} busy={busy} onSave={values => save("PATCH", values, task.id)} onCancel={() => setEditing(false)} /> : <>
           <p>Description: {task.description || "None"}</p><p>Progress: {label(taskProgressOptions, task.progress)}</p><p>Priority: {label(taskPriorityOptions, task.priority)}</p>
           <p>Partner: {task.partner_name}</p><p>Assignee: {task.assignee_name ?? "Unassigned"}</p>
+          <p>Workstream: {task.workstream_title ? task.workstream_title + (task.workstream_status === "removed" ? " (removed)" : "") : "None"}</p>
           <p>Assigned: {dateTime(task.assigned_at)}</p><p>Due date: {task.due_date ?? "None"}</p>
           <p>Created by {task.created_by_name} on {dateTime(task.created_at)}</p><p>Last modified by {task.updated_by_name} on {dateTime(task.updated_at)}</p>
 
@@ -181,6 +182,12 @@ function TaskForm({ data, task, busy, onSave, onCancel }: { data: TaskList; task
       <option value="">Unassigned</option>
       {assigneeId && !members.some(m => m.user_id === assigneeId) && <option value={assigneeId}>{task?.assignee_name ?? "Previous assignee"} (inactive)</option>}
       {members.map(m => <option key={m.user_id} value={m.user_id}>{m.display_name}</option>)}
+    </select></label></p>
+    <p><label>Workstream <select name="workstreamId" defaultValue={task?.workstream_id ?? ""}>
+      <option value="">None</option>
+      {task?.workstream_id && !data.workstreams.some(workstream => workstream.id === task.workstream_id)
+        && <option value={task.workstream_id}>{task.workstream_title ?? "Previous workstream"} (removed)</option>}
+      {data.workstreams.map(workstream => <option key={workstream.id} value={workstream.id}>{workstream.title}</option>)}
     </select></label></p>
     <p><label>Due date <input name="dueDate" type="date" defaultValue={task?.due_date ?? ""} /></label></p>
     <button>{task ? "Save changes" : "Create task"}</button>{" "}<button type="button" onClick={onCancel}>Cancel</button>

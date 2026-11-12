@@ -7,15 +7,16 @@ import {
 type Props = {
   events: CalendarSourceItem[];
   milestones: CalendarSourceItem[];
+  tasks: CalendarSourceItem[];
   timeZone: string;
   onTimeZoneChange: (zone: string) => void;
-  onOpen: (kind: "events" | "milestones", id: string) => void;
+  onOpen: (kind: "events" | "milestones" | "tasks", id: string) => void;
 };
 
 const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const zones = ["UTC", ...Intl.supportedValuesOf("timeZone")];
 
-export function ScheduleCalendar({ events, milestones, timeZone, onTimeZoneChange, onOpen }: Props) {
+export function ScheduleCalendar({ events, milestones, tasks, timeZone, onTimeZoneChange, onOpen }: Props) {
   const [now, setNow] = useState(() => new Date());
   const today = dateInZone(now, timeZone);
   const [month, setMonth] = useState(() => today.slice(0, 7));
@@ -24,7 +25,7 @@ export function ScheduleCalendar({ events, milestones, timeZone, onTimeZoneChang
     return () => window.clearInterval(timer);
   }, []);
   const days = monthDays(month);
-  const entries = calendarEntries(events, milestones, timeZone);
+  const entries = calendarEntries(events, milestones, timeZone, tasks);
   const upcoming = upcomingEntries(entries, now, timeZone);
   const monthLabel = new Intl.DateTimeFormat("en-GB", {
     timeZone: "UTC", month: "long", year: "numeric",
@@ -65,7 +66,7 @@ export function ScheduleCalendar({ events, milestones, timeZone, onTimeZoneChang
       <section aria-label="Upcoming schedule items">
         <h2>Upcoming</h2>
         <p>Next 14 days · {today} to {addCalendarDays(today, 13)}</p>
-        {upcoming.length === 0 ? <p>No upcoming events or milestones.</p> : <ul className="schedule-upcoming">
+        {upcoming.length === 0 ? <p>No upcoming events, milestones or task deadlines.</p> : <ul className="schedule-upcoming">
           {upcoming.map(entry => {
             const ongoing = entry.startsAt !== null && entry.startsAt <= now.getTime() && (entry.endsAt ?? -Infinity) > now.getTime();
             return <li key={entry.kind + entry.id}>

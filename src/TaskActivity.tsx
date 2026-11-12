@@ -28,7 +28,7 @@ function historyDetails(action: string, metadata: Record<string, unknown>) {
     };
     return metadata.before && metadata.after ? [`${assignment(metadata.before)} → ${assignment(metadata.after)}`] : [];
   }
-  const fieldNames: Record<string, string> = { title: "Title", description: "Description", priority: "Priority", due_date: "Due date" };
+  const fieldNames: Record<string, string> = { title: "Title", description: "Description", priority: "Priority", due_date: "Due date", workstream: "Workstream" };
   if (action === "task.updated" && metadata.changes && typeof metadata.changes === "object") {
     return Object.entries(metadata.changes).filter(([field]) => field in fieldNames).flatMap(([field, value]) => {
       if (!value || typeof value !== "object") return [];

@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { ScheduleTimeline } from "./ScheduleTimeline";
 import { ScheduleCalendar } from "./ScheduleCalendar";
-import { calendarEntries, entryTime } from "./schedule-calendar";
-import { scheduleEventTypeOptions, scheduleProgressOptions } from "./models";
+import { calendarEntries, entryTime, dateInZone } from "./schedule-calendar";
+import { scheduleEventTypeOptions, scheduleProgressOptions, taskProgressOptions } from "./models";
 import type { ApiFetch } from "./api-types";
 
 type Kind = "events" | "workstreams" | "milestones";
@@ -38,7 +39,9 @@ type Item = {
 };
 type Member = { user_id: string; display_name: string; can_organize: boolean };
 type Partner = { id: string; legal_name: string; can_add_timeline: boolean; members: Member[] };
+type LinkedTask = { id: string; title: string; partner_name: string; assignee_name: string | null; progress: string; status: string; due_date: string | null; workstream_id: string | null };
 type ScheduleData = {
+  tasks: LinkedTask[];
   proposal: { id: string; status: string };
   current_user_id: string;
   partners: Partner[];
@@ -47,6 +50,7 @@ type ScheduleData = {
   milestones: Item[];
 };
 type Props = {
+  onOpenTask: (id: string) => void;
   proposalId: string;
   refreshKey: number;
   apiFetch: ApiFetch;
@@ -63,7 +67,7 @@ const dates = (kind: Kind, item: Item, timeZone: string) => {
   return entry.date + " · " + entryTime(entry) + " · " + timeZone;
 };
 
-export function SchedulePage({ proposalId, refreshKey, apiFetch, onBusyChange, onAccessLost }: Props) {
+export function SchedulePage({ onOpenTask, proposalId, refreshKey, apiFetch, onBusyChange, onAccessLost }: Props) {
   const [displayZone, setDisplayZone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
   const [data, setData] = useState<ScheduleData | null>(null);
   const [selected, setSelected] = useState<{ kind: Kind; id: string } | null>(null);
@@ -136,7 +140,9 @@ export function SchedulePage({ proposalId, refreshKey, apiFetch, onBusyChange, o
     {data && <>
       {["submitted", "archived"].includes(data.proposal.status) && <p>This proposal is read-only.</p>}
       <div hidden={Boolean(creating || selected)}>
-        <ScheduleCalendar events={data.events} milestones={data.milestones} timeZone={displayZone} onTimeZoneChange={setDisplayZone}
+        <ScheduleCalendar events={data.events} milestones={data.milestones} tasks={data.tasks} timeZone={displayZone} onTimeZoneChange={setDisplayZone}
+          onOpen={(kind, id) => { if (kind === "tasks") onOpenTask(id); else setSelected({ kind, id }); setMessage(""); }} />
+        <ScheduleTimeline workstreams={data.workstreams} milestones={data.milestones} today={dateInZone(new Date(), displayZone)}
           onOpen={(kind, id) => { setSelected({ kind, id }); setMessage(""); }} />
       </div>
       {formKind ? <section className="section section-create">
@@ -156,6 +162,20 @@ export function SchedulePage({ proposalId, refreshKey, apiFetch, onBusyChange, o
           <p>Workstream: {item.workstream_id ? data.workstreams.find(workstream => workstream.id === item.workstream_id)?.title ?? "Previous workstream (removed)" : "None"}</p>
         </> : <p>Progress: {label(scheduleProgressOptions, item.progress)}</p>}
         <p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{item.description || item.notes || "No description or notes."}</p>
+        {selected.kind === "workstreams" && <>
+          <h3>Linked tasks</h3>
+          {!data.tasks.some(task => task.workstream_id === item.id) && <p>No linked tasks. Select a workstream when creating or editing a task.</p>}
+          <ul>{data.tasks.filter(task => task.workstream_id === item.id).map(task => <li key={task.id}>
+            <button type="button" onClick={() => onOpenTask(task.id)}>{task.title}</button>
+            {" · "}{label(taskProgressOptions, task.progress)} · {task.partner_name} · {task.assignee_name ?? "Unassigned"} · Due: {task.due_date ?? "None"}
+          </li>)}</ul>
+          <h3>Related events</h3>
+          {!data.events.some(event => event.workstream_id === item.id) && <p>No related events.</p>}
+          <ul>{data.events.filter(event => event.workstream_id === item.id).map(event => <li key={event.id}>
+            <button type="button" onClick={() => setSelected({ kind: "events", id: event.id })}>{event.title}</button>
+            {" · "}{dates("events", event, displayZone)}
+          </li>)}</ul>
+        </>}
         <p>Created by {item.created_by_name} on {new Date(item.created_at).toLocaleString()}</p>
         <p>Last modified by {item.updated_by_name} on {new Date(item.updated_at).toLocaleString()}</p>
         {item.can_edit && <button type="button" disabled={busy} onClick={() => { setEditing(true); setMessage(""); }}>Edit {names[selected.kind]}</button>}{" "}

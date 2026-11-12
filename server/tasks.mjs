@@ -15,8 +15,9 @@ export function addTaskRoutes(app) {
       if (!canReadTasks(actor, proposal)) return res.status(403).json({ error: "You do not have access to this proposal." });
       const partners = (await req.database.query("select cp.id,o.legal_name from consortium_partners cp join organizations o on o.id=cp.organization_id where cp.proposal_id=$1 and cp.status='active' order by o.legal_name,cp.id", [proposal.id])).rows;
       const members = (await req.database.query("select m.user_id,m.partner_id,u.display_name from proposal_memberships m join users u on u.id=m.user_id join consortium_partners cp on cp.id=m.partner_id and cp.proposal_id=m.proposal_id where m.proposal_id=$1 and m.status='active' and u.status='active' and cp.status='active' order by u.display_name,m.user_id", [proposal.id])).rows;
-      const tasks = (await req.database.query("select t.*,t.due_date::text as due_date,o.legal_name as partner_name,u.display_name as assignee_name,a.display_name as created_by_name,b.display_name as updated_by_name,(select count(*)::int from task_comments c where c.proposal_id=t.proposal_id and c.task_id=t.id and c.status='active') as comment_count from tasks t join consortium_partners cp on cp.id=t.partner_id and cp.proposal_id=t.proposal_id join organizations o on o.id=cp.organization_id left join users u on u.id=t.assignee_user_id join users a on a.id=t.created_by_user_id join users b on b.id=t.updated_by_user_id where t.proposal_id=$1 and t.status='active' order by t.created_at desc,t.id", [proposal.id])).rows;
-      res.json({ proposal, current_user_id: req.userId, can_assign_new: actor.access_role !== "contributor", can_add: canChangeTasks(actor, proposal) && partners.some(p => canCreateTask(actor, proposal, { proposal_id: proposal.id, partner_id: p.id, assignee_user_id: req.userId, status: "active" })), partners: partners.map(p => ({ ...p, can_create: canCreateTask(actor, proposal, { proposal_id: proposal.id, partner_id: p.id, assignee_user_id: req.userId, status: "active" }), members: members.filter(m => m.partner_id === p.id) })), tasks: tasks.map(t => ({ ...t, can_edit: canEditTask(actor, proposal, t), can_remove: canRemoveTask(actor, proposal, t), can_assign: canAssignTask(actor, proposal, t) })) });
+      const tasks = (await req.database.query("select t.*,w.title as workstream_title,w.status as workstream_status,t.due_date::text as due_date,o.legal_name as partner_name,u.display_name as assignee_name,a.display_name as created_by_name,b.display_name as updated_by_name,(select count(*)::int from task_comments c where c.proposal_id=t.proposal_id and c.task_id=t.id and c.status='active') as comment_count from tasks t left join schedule_workstreams w on w.id=t.workstream_id and w.proposal_id=t.proposal_id join consortium_partners cp on cp.id=t.partner_id and cp.proposal_id=t.proposal_id join organizations o on o.id=cp.organization_id left join users u on u.id=t.assignee_user_id join users a on a.id=t.created_by_user_id join users b on b.id=t.updated_by_user_id where t.proposal_id=$1 and t.status='active' order by t.created_at desc,t.id", [proposal.id])).rows;
+      const workstreams = (await req.database.query("select id,title from schedule_workstreams where proposal_id=$1 and status='active' order by title,id", [proposal.id])).rows;
+      res.json({ workstreams, proposal, current_user_id: req.userId, can_assign_new: actor.access_role !== "contributor", can_add: canChangeTasks(actor, proposal) && partners.some(p => canCreateTask(actor, proposal, { proposal_id: proposal.id, partner_id: p.id, assignee_user_id: req.userId, status: "active" })), partners: partners.map(p => ({ ...p, can_create: canCreateTask(actor, proposal, { proposal_id: proposal.id, partner_id: p.id, assignee_user_id: req.userId, status: "active" }), members: members.filter(m => m.partner_id === p.id) })), tasks: tasks.map(t => ({ ...t, can_edit: canEditTask(actor, proposal, t), can_remove: canRemoveTask(actor, proposal, t), can_assign: canAssignTask(actor, proposal, t) })) });
     } catch (error) { console.error("task read failed", error); res.status(500).json({ error: "Could not load tasks." }); }
   });
 
@@ -43,8 +44,10 @@ export function addTaskRoutes(app) {
         const body = req.body;
         if (!body || typeof body !== "object" || Array.isArray(body)) return await fail(400, "Enter valid task information.");
         const field = (key, existing, fallback) => Object.hasOwn(body, key) ? body[key] : existing ?? fallback;
-        const next = { ...current, id, proposal_id: proposalId, status: "active", title: field("title", current?.title, ""), description: field("description", current?.description, null), partner_id: field("partnerId", current?.partner_id, null), assignee_user_id: field("assigneeUserId", current?.assignee_user_id, null), progress: field("progress", current?.progress, "todo"), priority: field("priority", current?.priority, "medium"), due_date: field("dueDate", current?.due_date, null) };
+        const next = { ...current, id, proposal_id: proposalId, status: "active", title: field("title", current?.title, ""), description: field("description", current?.description, null), partner_id: field("partnerId", current?.partner_id, null), assignee_user_id: field("assigneeUserId", current?.assignee_user_id, null), progress: field("progress", current?.progress, "todo"), priority: field("priority", current?.priority, "medium"), due_date: field("dueDate", current?.due_date, null), workstream_id: field("workstreamId", current?.workstream_id, null) };
         if (next.assignee_user_id === "") next.assignee_user_id = null;
+        if (next.workstream_id === "") next.workstream_id = null;
+        if (next.workstream_id !== null && !uuid.test(next.workstream_id)) return await fail(400, "Choose a valid workstream.");
         if (next.due_date === "") next.due_date = null;
         let validDate = next.due_date === null;
         if (typeof next.due_date === "string" && /^[1-9]\d{3}-\d{2}-\d{2}$/.test(next.due_date)) { const date = new Date(next.due_date); validDate = !isNaN(date.getTime()) && date.toISOString().slice(0, 10) === next.due_date; }
@@ -59,16 +62,27 @@ export function addTaskRoutes(app) {
             if (!member.rowCount) return await fail(400, "Choose an active member of this partner.");
           }
         }
+        const workstreamChanged = !current || next.workstream_id !== current.workstream_id;
+        if (workstreamChanged && next.workstream_id) {
+          const workstream = await c.query("select 1 from schedule_workstreams where id=$1 and proposal_id=$2 and status='active'", [next.workstream_id, proposalId]);
+          if (!workstream.rowCount) return await fail(400, "Choose an active workstream in this proposal.");
+        }
         const changes = {};
         next.title = next.title.trim();
         next.description = next.description?.trim() || null;
         for (const field of ["title", "description", "priority", "due_date"]) {
           if (current && current[field] !== next[field]) changes[field] = { before: current[field], after: next[field] };
         }
+        if (current && workstreamChanged) {
+          const linked = await c.query("select id,title from schedule_workstreams where proposal_id=$1 and id=any($2::uuid[])", [proposalId, [current.workstream_id, next.workstream_id].filter(Boolean)]);
+          const name = id => linked.rows.find(row => row.id === id)?.title ?? null;
+          changes.workstream = { before: name(current.workstream_id), after: name(next.workstream_id) };
+        }
         metadata = current ? { changes } : { title: next.title };
-        if (!current) await c.query("insert into tasks(id,proposal_id,partner_id,title,description,progress,priority,assignee_user_id,assigned_by_user_id,assigned_at,due_date,created_by_user_id,updated_by_user_id) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12)", [id, proposalId, next.partner_id, next.title.trim(), next.description?.trim() || null, next.progress, next.priority, next.assignee_user_id, next.assignee_user_id ? req.userId : null, next.assignee_user_id ? new Date() : null, next.due_date, req.userId]);
+        if (!current) await c.query("insert into tasks(id,proposal_id,partner_id,title,description,progress,priority,assignee_user_id,assigned_by_user_id,assigned_at,due_date,created_by_user_id,updated_by_user_id,workstream_id) values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12,$13)", [id, proposalId, next.partner_id, next.title.trim(), next.description?.trim() || null, next.progress, next.priority, next.assignee_user_id, next.assignee_user_id ? req.userId : null, next.assignee_user_id ? new Date() : null, next.due_date, req.userId, next.workstream_id]);
         else {
           await c.query("update tasks set title=$1,description=$2,progress=$3,priority=$4,due_date=$5,updated_by_user_id=$6,updated_at=now() where id=$7 and proposal_id=$8", [next.title.trim(), next.description?.trim() || null, next.progress, next.priority, next.due_date, req.userId, id, proposalId]);
+          if (workstreamChanged) await c.query("update tasks set workstream_id=$1 where id=$2 and proposal_id=$3", [next.workstream_id, id, proposalId]);
           // leave old assignment dates alone when only editing task information
           if (assignmentChanged) await c.query("update tasks set partner_id=$1,assignee_user_id=$2,assigned_by_user_id=$3,assigned_at=$4 where id=$5 and proposal_id=$6", [next.partner_id, next.assignee_user_id, next.assignee_user_id ? req.userId : null, next.assignee_user_id ? new Date() : null, id, proposalId]);
           if (assignmentChanged) {

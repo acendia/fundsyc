@@ -311,6 +311,7 @@ export class Task {
     public status: TaskStatus = "active",
     public removedAt: Date | null = null,
     public removedByUserId: UUID | null = null,
+    public workstreamId: UUID | null = null,
   ) {}
 }
 

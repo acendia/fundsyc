@@ -59,6 +59,7 @@ export const documentReviews = pgTable("document_reviews", {
 });
 
 export const tasks = pgTable("tasks", {
+  workstreamId: uuid("workstream_id"),
   id: uuid("id"),
   proposalId: uuid("proposal_id"),
   partnerId: uuid("partner_id"),
