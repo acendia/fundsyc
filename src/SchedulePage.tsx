@@ -1,4 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { ScheduleCalendar } from "./ScheduleCalendar";
+import { calendarEntries, entryTime } from "./schedule-calendar";
 import { scheduleEventTypeOptions, scheduleProgressOptions } from "./models";
 import type { ApiFetch } from "./api-types";
 
@@ -26,6 +28,7 @@ type Item = {
   end_date?: string;
   due_date?: string;
   progress?: string;
+  status?: string;
   created_by_name: string;
   updated_by_name: string;
   created_at: string;
@@ -52,14 +55,16 @@ type Props = {
 };
 const names: Record<Kind, string> = { events: "event", workstreams: "workstream", milestones: "milestone" };
 const label = (options: readonly { value: string; label: string }[], value?: string) => options.find(option => option.value === value)?.label ?? value;
-const dates = (kind: Kind, item: Item) => {
+const dates = (kind: Kind, item: Item, timeZone: string) => {
   if (kind === "workstreams") return item.start_date + " – " + item.end_date;
   if (kind === "milestones") return item.due_date;
   if (item.all_day) return item.event_date + " · All day";
-  return item.event_date + " · " + item.start_time + (item.end_time ? "–" + item.end_time : "") + " · " + item.time_zone;
+  const entry = calendarEntries([item], [], timeZone)[0];
+  return entry.date + " · " + entryTime(entry) + " · " + timeZone;
 };
 
 export function SchedulePage({ proposalId, refreshKey, apiFetch, onBusyChange, onAccessLost }: Props) {
+  const [displayZone, setDisplayZone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
   const [data, setData] = useState<ScheduleData | null>(null);
   const [selected, setSelected] = useState<{ kind: Kind; id: string } | null>(null);
   const [creating, setCreating] = useState<Kind | null>(null);
@@ -130,6 +135,10 @@ export function SchedulePage({ proposalId, refreshKey, apiFetch, onBusyChange, o
     {!data && !error && <p>Loading schedule...</p>}
     {data && <>
       {["submitted", "archived"].includes(data.proposal.status) && <p>This proposal is read-only.</p>}
+      <div hidden={Boolean(creating || selected)}>
+        <ScheduleCalendar events={data.events} milestones={data.milestones} timeZone={displayZone} onTimeZoneChange={setDisplayZone}
+          onOpen={(kind, id) => { setSelected({ kind, id }); setMessage(""); }} />
+      </div>
       {formKind ? <section className="section section-create">
         <h2>{creating ? "Add" : "Edit"} {names[formKind]}</h2>
         <ScheduleForm key={formKind + (creating ? ":new" : item?.id)} kind={formKind} item={creating ? undefined : item}
@@ -138,9 +147,10 @@ export function SchedulePage({ proposalId, refreshKey, apiFetch, onBusyChange, o
       </section> : selected ? item ? <section className="section section-partner">
         <button type="button" disabled={busy} onClick={back}>Back to schedule</button>
         <h2>{item.title}</h2>
-        <p>{dates(selected.kind, item)}</p>
+        <p>{dates(selected.kind, item, displayZone)}</p>
         <p>Responsible partner: {item.partner_name}</p>
         {selected.kind === "events" ? <>
+          {!item.all_day && <p>Original event time: {item.event_date} · {item.start_time}{item.end_time ? "–" + item.end_time : ""} · {item.time_zone}</p>}
           <p>Type: {label(scheduleEventTypeOptions, item.event_type)}</p>
           <p>Organizer: {item.organizer_name}</p>
           <p>Workstream: {item.workstream_id ? data.workstreams.find(workstream => workstream.id === item.workstream_id)?.title ?? "Previous workstream (removed)" : "None"}</p>
@@ -158,14 +168,14 @@ export function SchedulePage({ proposalId, refreshKey, apiFetch, onBusyChange, o
           return <section className="section section-partner" key={kind}>
             <h2>{kind === "events" ? "Events" : kind === "workstreams" ? "Workstreams" : "Milestones"}</h2>
             {canAdd && <p><button type="button" onClick={() => { setCreating(kind); setMessage(""); }}>Add {names[kind]}</button></p>}
-            {data[kind].length === 0 ? <p>No active {kind}.</p> : <table>
+            {data[kind].length === 0 ? <p>No active {kind}.</p> : <div className="schedule-records-scroll"><table>
               <thead><tr><th>Title</th><th>{kind === "workstreams" ? "Date range" : "Date"}</th><th>Partner</th><th>{kind === "events" ? "Organizer" : "Progress"}</th></tr></thead>
               <tbody>{data[kind].map(item => <tr key={item.id}>
                 <td><button type="button" onClick={() => { setSelected({ kind, id: item.id }); setMessage(""); }}>{item.title}</button></td>
-                <td>{dates(kind, item)}</td><td>{item.partner_name}</td>
+                <td>{dates(kind, item, displayZone)}</td><td>{item.partner_name}</td>
                 <td>{kind === "events" ? item.organizer_name : label(scheduleProgressOptions, item.progress)}</td>
               </tr>)}</tbody>
-            </table>}
+            </table></div>}
           </section>;
         })}
       </>}

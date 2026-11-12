@@ -21,7 +21,7 @@
 .workspace-sidebar [aria-current="page"] { font-weight: bold; background: #eaf2ff; }
 .workspace-content { min-width: 0; padding-right: 1rem; }
 .workspace-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; border-bottom: 1px solid #ccc; padding-bottom: 0.5rem; }
-.workspace-header label { margin-left: auto; }
+.workspace-header label { margin-left: auto; max-width: 100%; }
 .workspace-header select { max-width: min(45vw, 500px); }
 .workspace-tools { margin-top: 1rem; }
 @media (max-width: 600px) {
@@ -46,3 +46,25 @@
 .task-card h4 button { font: inherit; text-align: left; white-space: normal; }
 .task-card p { margin: 0.5rem 0; }
 .task-description { white-space: pre-wrap; }
+
+.schedule-calendar-layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(220px, 1fr); gap: 1rem; align-items: start; }
+.schedule-calendar-scroll { overflow-x: auto; }
+.schedule-calendar { border-collapse: collapse; table-layout: fixed; width: 100%; min-width: 650px; }
+.schedule-calendar caption { font-weight: bold; padding: 0.5rem; text-align: left; }
+.schedule-calendar th, .schedule-calendar td { border: 1px solid #bac4ce; padding: 0.4rem; color: #18212f; }
+.schedule-calendar th { font-size: 0.85rem; background: #edf0f3; }
+.schedule-calendar td { height: 100px; vertical-align: top; background: white; }
+.schedule-calendar td[data-outside] { background: #edf0f3; }
+.schedule-calendar td[aria-current="date"] { outline: 2px solid #245ca8; outline-offset: -2px; }
+.schedule-calendar ul { list-style: none; padding: 0; margin: 0.4rem 0; }
+.schedule-calendar li { margin: 0.35rem 0; }
+.schedule-calendar button { width: 100%; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.schedule-upcoming { list-style: none; padding: 0; }
+.schedule-upcoming li { border-bottom: 1px solid #bac4ce; padding-bottom: 0.5rem; overflow-wrap: anywhere; }
+.schedule-upcoming button { text-align: left; }
+.schedule-time-zone select { max-width: 100%; }
+@media (max-width: 1050px) {
+  .schedule-calendar-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+.schedule-records-scroll { overflow-x: auto; }
