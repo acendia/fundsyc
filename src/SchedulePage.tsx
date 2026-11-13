@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { emptyScheduleFilters, matchesScheduleFilters } from "./schedule-filters";
 import { ScheduleTimeline } from "./ScheduleTimeline";
 import { ScheduleCalendar } from "./ScheduleCalendar";
 import { calendarEntries, entryTime, dateInZone } from "./schedule-calendar";
@@ -39,7 +40,7 @@ type Item = {
 };
 type Member = { user_id: string; display_name: string; can_organize: boolean };
 type Partner = { id: string; legal_name: string; can_add_timeline: boolean; members: Member[] };
-type LinkedTask = { id: string; title: string; partner_name: string; assignee_name: string | null; progress: string; status: string; due_date: string | null; workstream_id: string | null };
+type LinkedTask = { partner_id: string; id: string; title: string; partner_name: string; assignee_name: string | null; progress: string; status: string; due_date: string | null; workstream_id: string | null };
 type ScheduleData = {
   tasks: LinkedTask[];
   proposal: { id: string; status: string };
@@ -68,6 +69,7 @@ const dates = (kind: Kind, item: Item, timeZone: string) => {
 };
 
 export function SchedulePage({ onOpenTask, proposalId, refreshKey, apiFetch, onBusyChange, onAccessLost }: Props) {
+  const [filters, setFilters] = useState({ ...emptyScheduleFilters });
   const [displayZone, setDisplayZone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
   const [data, setData] = useState<ScheduleData | null>(null);
   const [selected, setSelected] = useState<{ kind: Kind; id: string } | null>(null);
@@ -130,6 +132,21 @@ export function SchedulePage({ onOpenTask, proposalId, refreshKey, apiFetch, onB
       setBusy(false);
     }
   }
+  const filtered = {
+    events: data?.events.filter(item => matchesScheduleFilters(item, "events", filters)) ?? [],
+    workstreams: data?.workstreams.filter(item => matchesScheduleFilters(item, "workstreams", filters)) ?? [],
+    milestones: data?.milestones.filter(item => matchesScheduleFilters(item, "milestones", filters)) ?? [],
+    tasks: data?.tasks.filter(item => matchesScheduleFilters(item, "tasks", filters)) ?? [],
+  };
+  const partners = new Map(data?.partners.map(partner => [partner.id, partner.legal_name]));
+  const organizers = new Map(data?.partners.flatMap(partner => partner.members.map(member => [member.user_id, member.display_name] as const)));
+  for (const item of [...(data?.events ?? []), ...(data?.workstreams ?? []), ...(data?.milestones ?? []), ...(data?.tasks ?? [])]) {
+    const id = "lead_partner_id" in item ? item.lead_partner_id : item.partner_id;
+    if (id) partners.set(id, item.partner_name);
+  }
+  for (const event of data?.events ?? []) {
+    if (event.organizer_user_id) organizers.set(event.organizer_user_id, event.organizer_name ?? "Previous organizer");
+  }
   const item = selected ? data?.[selected.kind].find(item => item.id === selected.id) : undefined;
   const formKind = creating ?? (editing && item?.can_edit ? selected?.kind : null);
   return <main>
@@ -140,9 +157,30 @@ export function SchedulePage({ onOpenTask, proposalId, refreshKey, apiFetch, onB
     {data && <>
       {["submitted", "archived"].includes(data.proposal.status) && <p>This proposal is read-only.</p>}
       <div hidden={Boolean(creating || selected)}>
-        <ScheduleCalendar events={data.events} milestones={data.milestones} tasks={data.tasks} timeZone={displayZone} onTimeZoneChange={setDisplayZone}
+        <section className="section section-records" aria-label="Schedule filters">
+          <p><label>Search title <input type="search" value={filters.title} onChange={event => setFilters({ ...filters, title: event.target.value })} /></label></p>
+          <p><label>Item type <select value={filters.type} onChange={event => setFilters({ ...filters, type: event.target.value })}>
+            <option value="">All item types</option><option value="events">All events</option>
+            {scheduleEventTypeOptions.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+            <option value="workstreams">Workstreams</option><option value="milestones">Milestones</option><option value="tasks">Task deadlines</option>
+          </select></label></p>
+          <p><label>Partner filter <select value={filters.partner} onChange={event => setFilters({ ...filters, partner: event.target.value })}>
+            <option value="">All partners</option>{Array.from(partners).sort((a, b) => a[1].localeCompare(b[1])).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+          </select></label></p>
+          <p><label>Organizer (events) <select value={filters.organizer} onChange={event => setFilters({ ...filters, organizer: event.target.value })}>
+            <option value="">All organizers</option>{Array.from(organizers).sort((a, b) => a[1].localeCompare(b[1])).map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+          </select></label></p>
+          <p><label>Progress filter <select value={filters.progress} onChange={event => setFilters({ ...filters, progress: event.target.value })}>
+            <option value="">All progress</option>
+            <optgroup label="Workstreams and milestones">{scheduleProgressOptions.map(option => <option key={option.value} value={"timeline:" + option.value}>{option.label}</option>)}</optgroup>
+            <optgroup label="Tasks">{taskProgressOptions.map(option => <option key={option.value} value={"task:" + option.value}>{option.label}</option>)}</optgroup>
+          </select></label></p>
+          <button type="button" onClick={() => setFilters({ ...emptyScheduleFilters })}>Clear filters</button>
+          <p role="status">Matching across all dates: {filtered.events.length} events, {filtered.workstreams.length} workstreams, {filtered.milestones.length} milestones, {filtered.tasks.length} task deadlines.</p>
+        </section>
+        <ScheduleCalendar events={filtered.events} milestones={filtered.milestones} tasks={filtered.tasks} timeZone={displayZone} onTimeZoneChange={setDisplayZone}
           onOpen={(kind, id) => { if (kind === "tasks") onOpenTask(id); else setSelected({ kind, id }); setMessage(""); }} />
-        <ScheduleTimeline workstreams={data.workstreams} milestones={data.milestones} today={dateInZone(new Date(), displayZone)}
+        <ScheduleTimeline workstreams={filtered.workstreams} milestones={filtered.milestones} today={dateInZone(new Date(), displayZone)}
           onOpen={(kind, id) => { setSelected({ kind, id }); setMessage(""); }} />
       </div>
       {formKind ? <section className="section section-create">
@@ -188,9 +226,9 @@ export function SchedulePage({ onOpenTask, proposalId, refreshKey, apiFetch, onB
           return <section className="section section-partner" key={kind}>
             <h2>{kind === "events" ? "Events" : kind === "workstreams" ? "Workstreams" : "Milestones"}</h2>
             {canAdd && <p><button type="button" onClick={() => { setCreating(kind); setMessage(""); }}>Add {names[kind]}</button></p>}
-            {data[kind].length === 0 ? <p>No active {kind}.</p> : <div className="schedule-records-scroll"><table>
+            {filtered[kind].length === 0 ? <p>{data[kind].length ? "No " + kind + " match these filters." : "No active " + kind + "."}</p> : <div className="schedule-records-scroll"><table>
               <thead><tr><th>Title</th><th>{kind === "workstreams" ? "Date range" : "Date"}</th><th>Partner</th><th>{kind === "events" ? "Organizer" : "Progress"}</th></tr></thead>
-              <tbody>{data[kind].map(item => <tr key={item.id}>
+              <tbody>{filtered[kind].map(item => <tr key={item.id}>
                 <td><button type="button" onClick={() => { setSelected({ kind, id: item.id }); setMessage(""); }}>{item.title}</button></td>
                 <td>{dates(kind, item, displayZone)}</td><td>{item.partner_name}</td>
                 <td>{kind === "events" ? item.organizer_name : label(scheduleProgressOptions, item.progress)}</td>

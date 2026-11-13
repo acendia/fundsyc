@@ -80,7 +80,7 @@ export function addScheduleRoutes(app) {
         data[kind] = rows.map(item => ({ ...item, can_edit: canManage(actor, proposal, item), can_remove: canManage(actor, proposal, item) }));
       }
       const tasks = (await req.database.query(
-        "select t.id,t.title,t.workstream_id,t.progress,t.status,t.due_date::text as due_date,o.legal_name as partner_name,u.display_name as assignee_name from tasks t join consortium_partners cp on cp.id=t.partner_id and cp.proposal_id=t.proposal_id join organizations o on o.id=cp.organization_id left join users u on u.id=t.assignee_user_id where t.proposal_id=$1 and t.status='active' order by t.due_date nulls last,t.title,t.id",
+        "select t.id,t.title,t.partner_id,t.workstream_id,t.progress,t.status,t.due_date::text as due_date,o.legal_name as partner_name,u.display_name as assignee_name from tasks t join consortium_partners cp on cp.id=t.partner_id and cp.proposal_id=t.proposal_id join organizations o on o.id=cp.organization_id left join users u on u.id=t.assignee_user_id where t.proposal_id=$1 and t.status='active' order by t.due_date nulls last,t.title,t.id",
         [proposal.id],
       )).rows;
       res.json({
