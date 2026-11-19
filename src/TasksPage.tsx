@@ -9,7 +9,7 @@ const dateTime = (value: string | null) => value ? new Date(value).toLocaleStrin
 
 export function TasksPage({ initialTaskId, proposalId, refreshKey, apiFetch, onBusyChange, onAccessLost }: Props) {
   const [data, setData] = useState<TaskList | null>(null);
-  const [view, setView] = useState<"board" | "list">("board");
+  const [view, setView] = useState<"board" | "list">("list");
   const [search, setSearch] = useState("");
   const [progressFilter, setProgressFilter] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("");
