@@ -16,6 +16,7 @@ async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}) {
 function Login() {
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
+  const [allowSignup, setAllowSignup] = useState(false);
   const [registering, setRegistering] = useState(false);
   const [message, setMessage] = useState("");
   useEffect(() => {
@@ -23,6 +24,7 @@ function Login() {
     fetch("/api/auth/config").then(async (response) => {
       if (!response.ok) throw new Error("Could not connect to local sign-in.");
       const config = await response.json();
+      setAllowSignup(config.allowSignup === true);
       authClient = createClient(config.url, config.key);
       const listener = authClient.auth.onAuthStateChange((_event, current) => setSession(current));
       const { data } = await authClient.auth.getSession();
@@ -39,6 +41,7 @@ function Login() {
   }
   async function signUp(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!allowSignup) { setMessage("Account registration is disabled."); return; }
     const data = new FormData(event.currentTarget);
     const fullName = String(data.get("fullName")).trim();
     if (!fullName) { setMessage("Enter your full name."); return; }
@@ -48,9 +51,9 @@ function Login() {
     setRegistering(false); setMessage("");
   }
   if (!ready) return <main><p>Loading sign-in...</p></main>;
-  if (registering) return <main><h1>Create an account</h1><form onSubmit={signUp}><p><label>Full name <input name="fullName" required /></label></p><p><label>Email <input name="email" type="email" required /></label></p><p><label>Password <input name="password" type="password" minLength={8} required /></label></p><button disabled={!authClient}>Create account</button></form><button type="button" onClick={() => { setRegistering(false); setMessage(""); }}>Back to sign in</button>{message && <p role="status">{message}</p>}</main>;
+  if (registering && allowSignup) return <main><h1>Create an account</h1><form onSubmit={signUp}><p><label>Full name <input name="fullName" required /></label></p><p><label>Email <input name="email" type="email" required /></label></p><p><label>Password <input name="password" type="password" minLength={8} required /></label></p><button disabled={!authClient}>Create account</button></form><button type="button" onClick={() => { setRegistering(false); setMessage(""); }}>Back to sign in</button>{message && <p role="status">{message}</p>}</main>;
   if (session) return <><p>Signed in as {session.user.email} <button onClick={() => authClient.auth.signOut()}>Sign out</button></p><App key={session.user.id} /></>;
-  return <main><h1>Sign in to FundSyc</h1><form onSubmit={signIn}><p><label>Email <input name="email" type="email" required /></label></p><p><label>Password <input name="password" type="password" required /></label></p><button disabled={!authClient}>Sign in</button></form>{message && <p role="alert">{message}</p>}<p><button type="button" onClick={() => { setRegistering(true); setMessage(""); }}>Create an account</button></p></main>;
+  return <main><h1>Sign in to FundSyc</h1><form onSubmit={signIn}><p><label>Email <input name="email" type="email" required /></label></p><p><label>Password <input name="password" type="password" required /></label></p><button disabled={!authClient}>Sign in</button></form>{message && <p role="alert">{message}</p>}{allowSignup && <p><button type="button" onClick={() => { setRegistering(true); setMessage(""); }}>Create an account</button></p>}</main>;
 }
 
 import "./sections.css";

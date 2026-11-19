@@ -30,5 +30,26 @@
   "vars": {
     "SUPABASE_URL": "https://spzkpyfldstvbambkjuv.supabase.co",
     "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_aGOfTRnbUe_44vNxeSoIVQ_iSypP0lk"
+  },
+  "env": {
+    "production": {
+      "name": "fundsyc",
+      "routes": [
+        {
+          "pattern": "fundsyc.com",
+          "custom_domain": true
+        }
+      ],
+      "hyperdrive": [
+        {
+          "binding": "HYPERDRIVE",
+          "id": "cf3e84a27e184157817550cf8e936149"
+        }
+      ],
+      "vars": {
+        "SUPABASE_URL": "https://spzkpyfldstvbambkjuv.supabase.co",
+        "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_aGOfTRnbUe_44vNxeSoIVQ_iSypP0lk"
+      }
+    }
   }
 }

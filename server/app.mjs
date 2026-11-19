@@ -15,7 +15,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { and, eq, desc } from "drizzle-orm";
 import { users, organizations, proposals, partners, contacts, memberships, auditEvents } from "../db/tables.mjs";
 
-export function createApp(getConnectionString, { authUrl, authKey, storageKey, storageBucket } = {}) {
+export function createApp(getConnectionString, { authUrl, authKey, storageKey, storageBucket, allowSignup = true } = {}) {
 const app = express();
 app.use(express.json());
 
@@ -30,7 +30,8 @@ app.use((request, response, next) => {
 
 app.get("/api/auth/config", (_request, response) => {
   if (!authUrl || !authKey) return response.status(503).json({ error: "Sign-in is not configured." });
-  response.json({ url: authUrl, key: authKey });
+  response.set("Cache-Control", "no-store");
+  response.json({ url: authUrl, key: authKey, allowSignup });
 });
 
 app.use("/api", async (request, response, next) => {
