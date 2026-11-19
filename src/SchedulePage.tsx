@@ -78,12 +78,18 @@ export function SchedulePage({ onOpenTask, proposalId, refreshKey, apiFetch, onB
   const [editing, setEditing] = useState(false);
   const [revision, setRevision] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadedKey, setLoadedKey] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const path = "/api/proposals/" + proposalId + "/schedule";
+  const requestKey = path + ":" + refreshKey + ":" + revision;
   useEffect(() => { onBusyChange(busy); }, [busy, onBusyChange]);
   useEffect(() => {
     const controller = new AbortController();
+    setLoading(true);
+    setLoadedKey("");
+    setError("");
     apiFetch(path, { signal: controller.signal }).then(async response => {
       if (!response.headers.get("content-type")?.includes("application/json")) throw new Error("The Schedule API is unavailable. Restart the local app and try again.");
       const result = await response.json();
@@ -94,12 +100,17 @@ export function SchedulePage({ onOpenTask, proposalId, refreshKey, apiFetch, onB
         throw new Error(result.error || "Could not load schedule.");
       }
       setData(result);
+      setLoadedKey(requestKey);
       setError("");
     }).catch(error => {
-      if (!controller.signal.aborted) setError(error.message);
+      if (!controller.signal.aborted) {
+        setError(error instanceof Error ? error.message : "Could not load schedule.");
+      }
+    }).finally(() => {
+      if (!controller.signal.aborted) setLoading(false);
     });
     return () => controller.abort();
-  }, [path, refreshKey, revision, apiFetch, onAccessLost]);
+  }, [path, requestKey, apiFetch, onAccessLost]);
 
   function back() {
     setSelected(null);
@@ -140,7 +151,9 @@ export function SchedulePage({ onOpenTask, proposalId, refreshKey, apiFetch, onB
     tasks: data?.tasks.filter(item => matchesScheduleFilters(item, "tasks", filters)) ?? [],
   };
   const exportCount = filtered.events.length + filtered.workstreams.length + filtered.milestones.length + filtered.tasks.length;
+  const canExport = Boolean(data) && !busy && !loading && !error && loadedKey === requestKey && exportCount > 0;
   function exportIcs() {
+    if (!canExport) return;
     const ics = buildScheduleIcs(filtered);
     const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar;charset=utf-8" }));
     const link = window.document.createElement("a");
@@ -165,7 +178,9 @@ export function SchedulePage({ onOpenTask, proposalId, refreshKey, apiFetch, onB
     <h1>Schedule</h1>
     {message && <p role="status">{message}</p>}
     {error && <p role="alert">{error}</p>}
+    {error && data && <p>The displayed schedule may be out of date. Export is unavailable until it refreshes successfully.</p>}
     {!data && !error && <p>Loading schedule...</p>}
+    {data && !error && (loading || loadedKey !== requestKey) && <p role="status">Refreshing schedule...</p>}
     {data && <>
       {["submitted", "archived"].includes(data.proposal.status) && <p>This proposal is read-only.</p>}
       <div hidden={Boolean(creating || selected)}>
@@ -188,7 +203,7 @@ export function SchedulePage({ onOpenTask, proposalId, refreshKey, apiFetch, onB
             <optgroup label="Tasks">{taskProgressOptions.map(option => <option key={option.value} value={"task:" + option.value}>{option.label}</option>)}</optgroup>
           </select></label></p>
           <button type="button" onClick={() => setFilters({ ...emptyScheduleFilters })}>Clear filters</button>{" "}
-          <button type="button" disabled={busy || exportCount === 0} onClick={exportIcs}>Export ICS</button>
+          <button type="button" disabled={!canExport} onClick={exportIcs}>Export ICS</button>
           <p role="status">Matching across all dates: {filtered.events.length} events, {filtered.workstreams.length} workstreams, {filtered.milestones.length} milestones, {filtered.tasks.length} task deadlines.</p>
         </section>
         <ScheduleCalendar events={filtered.events} milestones={filtered.milestones} tasks={filtered.tasks} timeZone={displayZone} onTimeZoneChange={setDisplayZone}
