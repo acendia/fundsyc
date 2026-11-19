@@ -39,12 +39,16 @@ export function canReadTask(actor, proposal, task) {
 
 export function canCreateTask(actor, proposal, task) {
   if (!canChangeTasks(actor, proposal) || !isActiveTask(task, proposal)) return false;
+  const ids = task.assignee_user_ids ?? [];
   return managesPartner(actor, proposal, task.partner_id)
-    || (actor.access_role === "contributor" && actor.partner_id === task.partner_id && actor.user_id === task.assignee_user_id);
+    || (actor.access_role === "contributor" && actor.partner_id === task.partner_id && ids.length === 1 && ids[0] === actor.user_id);
 }
 
+// contributors can edit a task when they are one of its assignees
 export function canEditTask(actor, proposal, task) {
-  return canCreateTask(actor, proposal, task);
+  if (!canChangeTasks(actor, proposal) || !isActiveTask(task, proposal)) return false;
+  return managesPartner(actor, proposal, task.partner_id)
+    || (actor.access_role === "contributor" && actor.partner_id === task.partner_id && (task.assignee_user_ids ?? []).includes(actor.user_id));
 }
 
 // check both sides so an admin cannot move another partner's task
@@ -60,7 +64,8 @@ export function canRemoveTask(actor, proposal, task) {
 // contributors can edit their task, but cannot change who owns the assignment
 export function canUpdateTask(actor, proposal, current, next) {
   if (!canEditTask(actor, proposal, current) || !isActiveTask(next, proposal) || current.id !== next.id) return false;
-  const assignmentChanged = current.partner_id !== next.partner_id || current.assignee_user_id !== next.assignee_user_id
+  const before = current.assignee_user_ids ?? [], after = next.assignee_user_ids ?? [];
+  const assignmentChanged = current.partner_id !== next.partner_id || before.length !== after.length || !before.every(id => after.includes(id))
     || current.assigned_by_user_id !== next.assigned_by_user_id || current.assigned_at !== next.assigned_at;
   return !assignmentChanged || canAssignTask(actor, proposal, current, next.partner_id);
 }

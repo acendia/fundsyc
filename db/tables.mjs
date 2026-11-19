@@ -93,6 +93,21 @@ export const taskComments = pgTable("task_comments", {
   removedByUserId: uuid("removed_by_user_id"),
 });
 
+export const taskAssignees = pgTable("task_assignees", {
+  id: uuid("id"),
+  proposalId: uuid("proposal_id"),
+  taskId: uuid("task_id"),
+  partnerId: uuid("partner_id"),
+  userId: uuid("user_id"),
+  assignedByUserId: uuid("assigned_by_user_id"),
+  assignedAt: timestamp("assigned_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
+  status: text("status"),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
+  removedByUserId: uuid("removed_by_user_id"),
+});
+
 export const scheduleWorkstreams = pgTable("schedule_workstreams", {
   id: uuid("id"),
   proposalId: uuid("proposal_id"),

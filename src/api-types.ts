@@ -113,12 +113,15 @@ export type TaskRecord = {
   partner_name: string;
   assignee_user_id: string | null;
   assignee_name: string | null;
+  assignees: { user_id: string; display_name: string; assigned_at: string; assigned_by_user_id: string }[];
   progress: string;
   priority: string;
   assigned_at: string | null;
   due_date: string | null;
   created_at: string;
   updated_at: string;
+  // exact database time text, send it back as expectedVersion when saving
+  version: string;
   created_by_name: string;
   updated_by_name: string;
   comment_count: number;

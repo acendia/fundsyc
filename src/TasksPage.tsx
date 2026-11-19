@@ -6,6 +6,8 @@ import type { ApiFetch, TaskList, TaskRecord } from "./api-types";
 type Props = { initialTaskId?: string; proposalId: string; refreshKey: number; apiFetch: ApiFetch; onBusyChange: (busy: boolean) => void; onAccessLost: () => void };
 const label = (options: readonly { value: string; label: string }[], value: string) => options.find(o => o.value === value)?.label ?? value;
 const dateTime = (value: string | null) => value ? new Date(value).toLocaleString() : "Not assigned";
+// legacy assignee_name only if the assignees list is missing.
+const assigneeNames = (item: TaskRecord) => item.assignees ? item.assignees.map(a => a.display_name).join(", ") || "Unassigned" : item.assignee_name ?? "Unassigned";
 
 export function TasksPage({ initialTaskId, proposalId, refreshKey, apiFetch, onBusyChange, onAccessLost }: Props) {
   const [data, setData] = useState<TaskList | null>(null);
@@ -23,6 +25,7 @@ export function TasksPage({ initialTaskId, proposalId, refreshKey, apiFetch, onB
   const [busy, setBusy] = useState(false);
   const [revision, setRevision] = useState(0);
   const [message, setMessage] = useState("");
+  const [stale, setStale] = useState(false);
   const [error, setError] = useState("");
   const refreshTasks = useCallback(() => setRevision(value => value + 1), []);
   const path = `/api/proposals/${proposalId}/tasks`;
@@ -43,8 +46,13 @@ export function TasksPage({ initialTaskId, proposalId, refreshKey, apiFetch, onB
       const response = await apiFetch(`${path}${id ? `/${id}` : ""}`, { method, headers: { "Content-Type": "application/json" }, body: values ? JSON.stringify(values) : undefined });
       if (!response.headers.get("content-type")?.includes("application/json")) throw new Error("The Tasks API is unavailable. Restart the local app and try again.");
       const result = await response.json();
-      if (!response.ok) { if (response.status === 403) setRevision(r => r + 1); throw new Error(result.error || "Could not save task."); }
-      setCreating(false); setEditing(false); setSelected(method === "DELETE" ? null : result.id);
+      if (!response.ok) {
+        if (response.status === 403) setRevision(r => r + 1);
+        // someone else saved first, keep the form and reload the latest task so the user can retry
+        if (result.code === "task_changed") { setStale(true); setRevision(r => r + 1); }
+        throw new Error(result.error || "Could not save task.");
+      }
+      setCreating(false); setEditing(false); setStale(false); setSelected(method === "DELETE" ? null : result.id);
       setMessage(method === "DELETE" ? "Task marked as removed." : "Task saved."); setRevision(r => r + 1);
     } catch (error) { setMessage(error instanceof Error ? error.message : "Could not save task."); }
     finally { setBusy(false); }
@@ -58,9 +66,9 @@ export function TasksPage({ initialTaskId, proposalId, refreshKey, apiFetch, onB
     if (progressFilter && item.progress !== progressFilter) return false;
     if (priorityFilter && item.priority !== priorityFilter) return false;
     if (partnerFilter && item.partner_id !== partnerFilter) return false;
-    if (assigneeFilter === "unassigned" && item.assignee_user_id !== null) return false;
-    if (assigneeFilter && assigneeFilter !== "unassigned" && item.assignee_user_id !== assigneeFilter) return false;
-    if (myTasks && item.assignee_user_id !== data.current_user_id) return false;
+    if (assigneeFilter === "unassigned" && item.assignees.length) return false;
+    if (assigneeFilter && assigneeFilter !== "unassigned" && !item.assignees.some(a => a.user_id === assigneeFilter)) return false;
+    if (myTasks && !item.assignees.some(a => a.user_id === data.current_user_id)) return false;
     if (overdueOnly && (!item.due_date || item.due_date >= today || item.progress === "completed")) return false;
     return true;
   }) ?? [];
@@ -68,7 +76,7 @@ export function TasksPage({ initialTaskId, proposalId, refreshKey, apiFetch, onB
   const assigneeOptions = new Map(data?.partners.flatMap(partner => partner.members.map(member => [member.user_id, member.display_name] as const)));
   for (const item of data?.tasks ?? []) {
     partnerOptions.set(item.partner_id, item.partner_name);
-    if (item.assignee_user_id) assigneeOptions.set(item.assignee_user_id, item.assignee_name ?? "Previous assignee");
+    for (const assignee of item.assignees) assigneeOptions.set(assignee.user_id, assignee.display_name);
   }
   function clearFilters() {
     setSearch("");
@@ -83,9 +91,10 @@ export function TasksPage({ initialTaskId, proposalId, refreshKey, apiFetch, onB
   function openTask(id: string) {
     setSelected(id);
     setEditing(false);
+    setStale(false);
     setMessage("");
   }
-  function back() { setSelected(null); setEditing(false); setCreating(false); setMessage(""); }
+  function back() { setSelected(null); setEditing(false); setCreating(false); setStale(false); setMessage(""); }
   return <main>
     <h1>Tasks</h1>
     {message && <p role="status">{message}</p>}{error && <p role="alert">{error}</p>}
@@ -95,14 +104,14 @@ export function TasksPage({ initialTaskId, proposalId, refreshKey, apiFetch, onB
       {["submitted", "archived"].includes(data.proposal.status) && <p>This proposal is read-only.</p>}
       {creating ? <section className="section section-create"><h2>Add task</h2><TaskForm data={data} busy={busy} onSave={values => save("POST", values)} onCancel={back} /></section> : selected ? task ? <section className="section section-partner">
         <button type="button" disabled={busy} onClick={back}>Back to tasks</button><h2>{task.title}</h2>
-        {editing && task.can_edit ? <TaskForm key={task.id} task={task} data={data} busy={busy} onSave={values => save("PATCH", values, task.id)} onCancel={() => setEditing(false)} /> : <>
+        {editing && task.can_edit ? <TaskForm key={task.id} task={task} data={data} busy={busy} stale={stale} onStaleAccepted={() => setStale(false)} onDiscard={() => { setEditing(false); setStale(false); setRevision(r => r + 1); setMessage("Your unsaved changes were discarded. Showing the latest saved task."); }} onSave={values => save("PATCH", values, task.id)} onCancel={() => { setEditing(false); setStale(false); }} /> : <>
           <p>Description: {task.description || "None"}</p><p>Progress: {label(taskProgressOptions, task.progress)}</p><p>Priority: {label(taskPriorityOptions, task.priority)}</p>
-          <p>Partner: {task.partner_name}</p><p>Assignee: {task.assignee_name ?? "Unassigned"}</p>
+          <p>Partner: {task.partner_name}</p><p>Assignee: {assigneeNames(task)}</p>
           <p>Workstream: {task.workstream_title ? task.workstream_title + (task.workstream_status === "removed" ? " (removed)" : "") : "None"}</p>
           <p>Assigned: {dateTime(task.assigned_at)}</p><p>Due date: {task.due_date ?? "None"}</p>
           <p>Created by {task.created_by_name} on {dateTime(task.created_at)}</p><p>Last modified by {task.updated_by_name} on {dateTime(task.updated_at)}</p>
 
-          {task.can_edit && <button type="button" disabled={busy} onClick={() => { setEditing(true); setMessage(""); }}>Edit task</button>}{" "}
+          {task.can_edit && <button type="button" disabled={busy} onClick={() => { setEditing(true); setStale(false); setMessage(""); }}>Edit task</button>}{" "}
           {task.can_remove && <button type="button" disabled={busy} onClick={() => { if (window.confirm(`Mark ${task.title} as removed? Its comments will be kept.`)) void save("DELETE", undefined, task.id); }}>Remove task</button>}
           <TaskActivity key={task.id} proposalId={proposalId} taskId={task.id} refreshKey={revision + refreshKey} apiFetch={apiFetch} busy={busy} onBusyChange={setBusy} onChange={refreshTasks} onAccessLost={refreshTasks} />
         </>}
@@ -143,7 +152,7 @@ export function TasksPage({ initialTaskId, proposalId, refreshKey, apiFetch, onB
                 <h4><button type="button" disabled={busy} onClick={() => openTask(item.id)}>{item.title}</button></h4>
                 {item.description && <p className="task-description">{item.description.length > 180 ? `${item.description.slice(0, 180).trimEnd()}…` : item.description}</p>}
                 <p>Partner: {item.partner_name}</p>
-                <p>Assignee: {item.assignee_name ?? "Unassigned"}</p>
+                <p>Assignee: {assigneeNames(item)}</p>
                 <p>Assigned: {dateTime(item.assigned_at)}</p>
                 <p>Due date: {item.due_date ?? "None"}</p>
                 <p>Comments: {item.comment_count}</p>
@@ -151,38 +160,53 @@ export function TasksPage({ initialTaskId, proposalId, refreshKey, apiFetch, onB
             </section>;
           })}
         </div> : !filteredTasks.length ? null : <table><thead><tr><th>Task</th><th>Progress</th><th>Priority</th><th>Partner</th><th>Assignee</th><th>Assigned</th><th>Due date</th><th>Comments</th><th>Actions</th></tr></thead><tbody>{filteredTasks.map(t => <tr key={t.id}>
-          <td>{t.title}</td><td>{label(taskProgressOptions, t.progress)}</td><td>{label(taskPriorityOptions, t.priority)}</td><td>{t.partner_name}</td><td>{t.assignee_name ?? "Unassigned"}</td><td>{dateTime(t.assigned_at)}</td><td>{t.due_date ?? "None"}</td><td>{t.comment_count}</td><td><button type="button" disabled={busy} onClick={() => openTask(t.id)}>Details</button></td>
+          <td>{t.title}</td><td>{label(taskProgressOptions, t.progress)}</td><td>{label(taskPriorityOptions, t.priority)}</td><td>{t.partner_name}</td><td>{assigneeNames(t)}</td><td>{dateTime(t.assigned_at)}</td><td>{t.due_date ?? "None"}</td><td>{t.comment_count}</td><td><button type="button" disabled={busy} onClick={() => openTask(t.id)}>Details</button></td>
         </tr>)}</tbody></table>}
       </>}
     </>}
   </main>;
 }
 
-function TaskForm({ data, task, busy, onSave, onCancel }: { data: TaskList; task?: TaskRecord; busy: boolean; onSave: (values: object) => Promise<void>; onCancel: () => void }) {
+function TaskForm({ data, task, busy, stale = false, onStaleAccepted, onDiscard, onSave, onCancel }: { data: TaskList; task?: TaskRecord; busy: boolean; stale?: boolean; onStaleAccepted?: () => void; onDiscard?: () => void; onSave: (values: object) => Promise<void>; onCancel: () => void }) {
   const partners = data.partners.filter(p => p.can_create);
   const initialPartner = partners.find(p => p.members.some(m => m.user_id === data.current_user_id)) ?? partners[0];
   const [partnerId, setPartnerId] = useState(task?.partner_id ?? initialPartner?.id ?? "");
-  const [assigneeId, setAssigneeId] = useState(task?.assignee_user_id ?? (task ? "" : initialPartner?.members.some(m => m.user_id === data.current_user_id) ? data.current_user_id : ""));
+  // the version this form was opened with, a save is rejected if the task changed since
+  const [expectedVersion, setExpectedVersion] = useState(task?.version);
+  const [assigneeIds, setAssigneeIds] = useState<string[]>(task ? task.assignees.map(a => a.user_id) : initialPartner?.members.some(m => m.user_id === data.current_user_id) ? [data.current_user_id] : []);
   const members = data.partners.find(p => p.id === partnerId)?.members ?? [];
+  // inactive assignees stay checked so they are kept on save.
+  const inactiveIds = assigneeIds.filter(id => !members.some(m => m.user_id === id));
   const canAssign = task ? task.can_assign : data.can_assign_new;
+  function toggleAssignee(userId: string, checked: boolean) {
+    setAssigneeIds(ids => checked ? [...ids, userId] : ids.filter(id => id !== userId));
+  }
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    void onSave({ ...Object.fromEntries(new FormData(event.currentTarget)), partnerId, assigneeUserId: assigneeId || null });
+    void onSave({ ...Object.fromEntries(new FormData(event.currentTarget)), partnerId, assigneeUserIds: assigneeIds, ...(task ? { expectedVersion } : {}) });
   }
-  return <form onSubmit={submit}><fieldset disabled={busy}>
+  // the form keeps the user's input, the banner only shows what was saved since
+  return <form onSubmit={submit}>
+    {task && stale && <div role="alert">
+      <p>Someone else saved this task after you opened it. Saving this form will overwrite their changes.</p>
+      <p>Latest saved: {task.title}, progress {label(taskProgressOptions, task.progress)}, priority {label(taskPriorityOptions, task.priority)}, assignees {assigneeNames(task)}, due date {task.due_date ?? "None"}.</p>
+      <p>This form still shows your own values, not the latest saved values.</p>
+      <button type="button" disabled={busy || expectedVersion === task.version} onClick={() => { setExpectedVersion(task.version); onStaleAccepted?.(); }}>Overwrite their changes</button>{" "}
+      <button type="button" disabled={busy} onClick={() => onDiscard?.()}>Discard my changes and reload</button>
+    </div>}
+    <fieldset disabled={busy}>
     <p><label>Title <input name="title" defaultValue={task?.title ?? ""} required /></label></p>
     <p><label>Description <textarea name="description" defaultValue={task?.description ?? ""} /></label></p>
     <p><label>Progress <select name="progress" defaultValue={task?.progress ?? "todo"}>{taskProgressOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></label></p>
     <p><label>Priority <select name="priority" defaultValue={task?.priority ?? "medium"}>{taskPriorityOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></label></p>
-    <p><label>Partner <select value={partnerId} disabled={!canAssign} required onChange={event => { setPartnerId(event.target.value); setAssigneeId(""); }}>
+    <p><label>Partner <select value={partnerId} disabled={!canAssign} required onChange={event => { setPartnerId(event.target.value); setAssigneeIds([]); }}>
       {!partners.some(p => p.id === partnerId) && task && <option value={task.partner_id}>{task.partner_name} (previous partner)</option>}
       {partners.map(p => <option key={p.id} value={p.id}>{p.legal_name}</option>)}
     </select></label></p>
-    <p><label>Assignee <select value={assigneeId} disabled={!canAssign} onChange={event => setAssigneeId(event.target.value)}>
-      <option value="">Unassigned</option>
-      {assigneeId && !members.some(m => m.user_id === assigneeId) && <option value={assigneeId}>{task?.assignee_name ?? "Previous assignee"} (inactive)</option>}
-      {members.map(m => <option key={m.user_id} value={m.user_id}>{m.display_name}</option>)}
-    </select></label></p>
+    <fieldset disabled={!canAssign}><legend>Assignees</legend>
+      {inactiveIds.map(id => <p key={id}><label><input type="checkbox" checked onChange={event => toggleAssignee(id, event.target.checked)} /> {task?.assignees.find(a => a.user_id === id)?.display_name ?? "Previous assignee"} (inactive)</label></p>)}
+      {members.map(m => <p key={m.user_id}><label><input type="checkbox" checked={assigneeIds.includes(m.user_id)} onChange={event => toggleAssignee(m.user_id, event.target.checked)} /> {m.display_name}</label></p>)}
+    </fieldset>
     <p><label>Workstream <select name="workstreamId" defaultValue={task?.workstream_id ?? ""}>
       <option value="">None</option>
       {task?.workstream_id && !data.workstreams.some(workstream => workstream.id === task.workstream_id)

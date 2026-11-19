@@ -331,6 +331,24 @@ export class TaskComment {
   ) {}
 }
 
+// one row per person on a task, removed rows keep the history
+export class TaskAssignee {
+  constructor(
+    public id: UUID,
+    public proposalId: UUID,
+    public taskId: UUID,
+    public partnerId: UUID,
+    public userId: UUID,
+    public assignedByUserId: UUID,
+    public assignedAt: Date,
+    public createdAt: Date,
+    public updatedAt: Date,
+    public status: "active" | "removed" = "active",
+    public removedAt: Date | null = null,
+    public removedByUserId: UUID | null = null,
+  ) {}
+}
+
 export const scheduleProgressOptions = [
   { value: "planned", label: "Planned" },
   { value: "in_progress", label: "In progress" },
