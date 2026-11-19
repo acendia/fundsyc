@@ -3,6 +3,7 @@ import { emptyScheduleFilters, matchesScheduleFilters } from "./schedule-filters
 import { ScheduleTimeline } from "./ScheduleTimeline";
 import { ScheduleCalendar } from "./ScheduleCalendar";
 import { calendarEntries, entryTime, dateInZone } from "./schedule-calendar";
+import { buildScheduleIcs } from "./schedule-ics";
 import { scheduleEventTypeOptions, scheduleProgressOptions, taskProgressOptions } from "./models";
 import type { ApiFetch } from "./api-types";
 
@@ -138,6 +139,17 @@ export function SchedulePage({ onOpenTask, proposalId, refreshKey, apiFetch, onB
     milestones: data?.milestones.filter(item => matchesScheduleFilters(item, "milestones", filters)) ?? [],
     tasks: data?.tasks.filter(item => matchesScheduleFilters(item, "tasks", filters)) ?? [],
   };
+  const exportCount = filtered.events.length + filtered.workstreams.length + filtered.milestones.length + filtered.tasks.length;
+  function exportIcs() {
+    const ics = buildScheduleIcs(filtered);
+    const url = URL.createObjectURL(new Blob([ics], { type: "text/calendar;charset=utf-8" }));
+    const link = window.document.createElement("a");
+    link.href = url;
+    link.download = "fundsyc-schedule.ics";
+    link.click();
+    URL.revokeObjectURL(url);
+    setMessage("Schedule exported (.ics).");
+  }
   const partners = new Map(data?.partners.map(partner => [partner.id, partner.legal_name]));
   const organizers = new Map(data?.partners.flatMap(partner => partner.members.map(member => [member.user_id, member.display_name] as const)));
   for (const item of [...(data?.events ?? []), ...(data?.workstreams ?? []), ...(data?.milestones ?? []), ...(data?.tasks ?? [])]) {
@@ -175,7 +187,8 @@ export function SchedulePage({ onOpenTask, proposalId, refreshKey, apiFetch, onB
             <optgroup label="Workstreams and milestones">{scheduleProgressOptions.map(option => <option key={option.value} value={"timeline:" + option.value}>{option.label}</option>)}</optgroup>
             <optgroup label="Tasks">{taskProgressOptions.map(option => <option key={option.value} value={"task:" + option.value}>{option.label}</option>)}</optgroup>
           </select></label></p>
-          <button type="button" onClick={() => setFilters({ ...emptyScheduleFilters })}>Clear filters</button>
+          <button type="button" onClick={() => setFilters({ ...emptyScheduleFilters })}>Clear filters</button>{" "}
+          <button type="button" disabled={busy || exportCount === 0} onClick={exportIcs}>Export ICS</button>
           <p role="status">Matching across all dates: {filtered.events.length} events, {filtered.workstreams.length} workstreams, {filtered.milestones.length} milestones, {filtered.tasks.length} task deadlines.</p>
         </section>
         <ScheduleCalendar events={filtered.events} milestones={filtered.milestones} tasks={filtered.tasks} timeZone={displayZone} onTimeZoneChange={setDisplayZone}
