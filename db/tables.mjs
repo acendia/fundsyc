@@ -108,6 +108,38 @@ export const taskAssignees = pgTable("task_assignees", {
   removedByUserId: uuid("removed_by_user_id"),
 });
 
+export const discussions = pgTable("discussions", {
+  id: uuid("id"),
+  proposalId: uuid("proposal_id"),
+  partnerId: uuid("partner_id"),
+  createdByUserId: uuid("created_by_user_id"),
+  title: text("title"),
+  body: text("body"),
+  linkedKind: text("linked_kind"),
+  linkedId: uuid("linked_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
+  updatedByUserId: uuid("updated_by_user_id"),
+  status: text("status"),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
+  removedByUserId: uuid("removed_by_user_id"),
+});
+
+export const discussionReplies = pgTable("discussion_replies", {
+  id: uuid("id"),
+  proposalId: uuid("proposal_id"),
+  discussionId: uuid("discussion_id"),
+  partnerId: uuid("partner_id"),
+  createdByUserId: uuid("created_by_user_id"),
+  body: text("body"),
+  createdAt: timestamp("created_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
+  updatedByUserId: uuid("updated_by_user_id"),
+  status: text("status"),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
+  removedByUserId: uuid("removed_by_user_id"),
+});
+
 export const scheduleWorkstreams = pgTable("schedule_workstreams", {
   id: uuid("id"),
   proposalId: uuid("proposal_id"),

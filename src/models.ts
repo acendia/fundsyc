@@ -349,6 +349,45 @@ export class TaskAssignee {
   ) {}
 }
 
+export type DiscussionLinkKind = "task" | "event" | "workstream" | "milestone";
+
+// a discussion can link to one task or schedule item of the same proposal
+export class Discussion {
+  constructor(
+    public id: UUID,
+    public proposalId: UUID,
+    public partnerId: UUID,
+    public createdByUserId: UUID,
+    public title: string,
+    public body: string,
+    public linkedKind: DiscussionLinkKind | null,
+    public linkedId: UUID | null,
+    public createdAt: Date,
+    public updatedAt: Date,
+    public updatedByUserId: UUID,
+    public status: "active" | "removed" = "active",
+    public removedAt: Date | null = null,
+    public removedByUserId: UUID | null = null,
+  ) {}
+}
+
+export class DiscussionReply {
+  constructor(
+    public id: UUID,
+    public proposalId: UUID,
+    public discussionId: UUID,
+    public partnerId: UUID,
+    public createdByUserId: UUID,
+    public body: string,
+    public createdAt: Date,
+    public updatedAt: Date,
+    public updatedByUserId: UUID,
+    public status: "active" | "removed" = "active",
+    public removedAt: Date | null = null,
+    public removedByUserId: UUID | null = null,
+  ) {}
+}
+
 export const scheduleProgressOptions = [
   { value: "planned", label: "Planned" },
   { value: "in_progress", label: "In progress" },

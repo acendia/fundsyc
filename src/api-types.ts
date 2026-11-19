@@ -161,3 +161,45 @@ export type TaskActivityRecord = {
   comments: TaskCommentRecord[];
   history: { id: string; action: string; actor_name: string; created_at: string; metadata: Record<string, unknown> }[];
 };
+
+export type DiscussionLinkKind = "task" | "event" | "workstream" | "milestone";
+export type DiscussionLinkable = { id: string; title: string };
+export type DiscussionReplyRecord = {
+  id: string;
+  discussion_id: string;
+  partner_name: string;
+  created_by_user_id: string;
+  created_by_name: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+  can_edit: boolean;
+  can_remove: boolean;
+};
+export type DiscussionRecord = {
+  id: string;
+  partner_id: string;
+  partner_name: string;
+  title: string;
+  body: string;
+  created_by_user_id: string;
+  created_by_name: string;
+  updated_by_name: string;
+  created_at: string;
+  updated_at: string;
+  // linked_kind stays set when the item is removed, linked_item is null then
+  linked_kind: DiscussionLinkKind | null;
+  linked_id: string | null;
+  linked_item: { kind: DiscussionLinkKind; id: string; title: string } | null;
+  reply_count: number;
+  replies: DiscussionReplyRecord[];
+  can_edit: boolean;
+  can_remove: boolean;
+  can_reply: boolean;
+};
+export type DiscussionList = {
+  current_user_id: string;
+  can_create: boolean;
+  linkable: { tasks: DiscussionLinkable[]; events: DiscussionLinkable[]; workstreams: DiscussionLinkable[]; milestones: DiscussionLinkable[] };
+  discussions: DiscussionRecord[];
+};
