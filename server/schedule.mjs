@@ -5,6 +5,7 @@ import {
 } from "./schedule-permissions.mjs";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const validUuid = value => typeof value === "string" && uuid.test(value);
 const progress = ["planned", "in_progress", "at_risk", "completed"];
 const kinds = {
   workstreams: { table: "schedule_workstreams", entity: "schedule_workstream", columns: ["title", "description", "lead_partner_id", "start_date", "end_date", "progress"] },
@@ -137,11 +138,11 @@ export function addScheduleRoutes(app) {
             all_day: field("allDay", "all_day", true), time_zone: field("timeZone", "time_zone"),
           });
           if (typeof next.all_day !== "boolean" || !["meeting", "deadline", "reminder"].includes(next.event_type) || !validDate(next.event_date)
-            || (next.workstream_id !== null && !uuid.test(next.workstream_id))) return await fail(400, "Choose a valid event type, date and workstream.");
-          if (!uuid.test(next.partner_id ?? "") || !uuid.test(next.organizer_user_id ?? "")) return await fail(400, "Choose a partner and organizer.");
+            || (next.workstream_id !== null && !validUuid(next.workstream_id))) return await fail(400, "Choose a valid event type, date and workstream.");
+          if (!validUuid(next.partner_id) || !validUuid(next.organizer_user_id)) return await fail(400, "Choose a partner and organizer.");
         } else {
           Object.assign(next, { lead_partner_id: field("leadPartnerId", "lead_partner_id"), description: field("description", "description"), progress: field("progress", "progress", "planned") });
-          if (!uuid.test(next.lead_partner_id ?? "") || !progress.includes(next.progress)) return await fail(400, "Choose a valid lead partner and progress.");
+          if (!validUuid(next.lead_partner_id) || !progress.includes(next.progress)) return await fail(400, "Choose a valid lead partner and progress.");
           if (kind === "workstreams") {
             next.start_date = field("startDate", "start_date");
             next.end_date = field("endDate", "end_date");
