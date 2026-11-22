@@ -101,3 +101,24 @@
 @media (max-width: 800px) {
   .messages-layout { grid-template-columns: minmax(0, 1fr); }
 }
+
+.requirements-summary { display: flex; flex-wrap: wrap; border: 1px solid #bac4ce; background: white; margin: 0.75rem 0; color: #18212f; }
+.requirements-summary p { flex: 1 1 120px; margin: 0; padding: 0.6rem 0.9rem; border-right: 1px solid #d9dfe5; }
+.requirements-summary strong { display: block; font-size: 1.5rem; }
+.requirements-table-scroll { overflow-x: auto; }
+.requirement-overdue { color: #9b1c1c; font-weight: bold; }
+
+.overview-summary { display: flex; flex-wrap: wrap; gap: 1rem; margin: 1rem 0; }
+.overview-summary > div { flex: 1 1 160px; border: 1px solid #bac4ce; padding: 0.5rem 0.75rem; background: white; color: #18212f; }
+.overview-summary h3, .overview-summary p { margin: 0.4rem 0; }
+.overview-columns { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 1rem; align-items: start; }
+.overview-columns > div { min-width: 0; }
+.overview-list { list-style: none; padding: 0; }
+.overview-list li { padding: 0.6rem 0; border-bottom: 1px solid #d9dfe5; overflow-wrap: anywhere; }
+.overview-list li:last-child { border-bottom: 0; }
+.overview-list p { margin: 0.3rem 0; }
+.overview-list button { text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.overview-overdue { color: #9b1c1c; font-weight: bold; }
+@media (max-width: 800px) {
+  .overview-columns { grid-template-columns: minmax(0, 1fr); }
+}

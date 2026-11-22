@@ -26,6 +26,12 @@ export const documents = pgTable("documents", {
   updatedAt: timestamp("updated_at", { withTimezone: true }),
 });
 
+export const documentCategories = pgTable("document_categories", {
+  id: uuid("id"), proposalId: uuid("proposal_id"), value: text("value"), label: text("label"),
+  createdByUserId: uuid("created_by_user_id"), createdAt: timestamp("created_at", { withTimezone: true }),
+  status: text("status"), removedAt: timestamp("removed_at", { withTimezone: true }), removedByUserId: uuid("removed_by_user_id"),
+});
+
 export const documentVersions = pgTable("document_versions", {
   id: uuid("id"),
   proposalId: uuid("proposal_id"),
@@ -235,6 +241,39 @@ export const messages = pgTable("messages", {
   body: text("body"),
   createdAt: timestamp("created_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }),
+  status: text("status"),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
+  removedByUserId: uuid("removed_by_user_id"),
+});
+
+export const requirements = pgTable("requirements", {
+  id: uuid("id"),
+  proposalId: uuid("proposal_id"),
+  requirementNumber: integer("requirement_number"),
+  title: text("title"),
+  description: text("description"),
+  category: text("category"),
+  ownerUserId: uuid("owner_user_id"),
+  partnerId: uuid("partner_id"),
+  dueDate: date("due_date"),
+  priority: text("priority"),
+  manualCompleted: boolean("manual_completed"),
+  createdByUserId: uuid("created_by_user_id"),
+  updatedByUserId: uuid("updated_by_user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
+  status: text("status"),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
+  removedByUserId: uuid("removed_by_user_id"),
+});
+
+export const requirementTasks = pgTable("requirement_tasks", {
+  id: uuid("id"),
+  proposalId: uuid("proposal_id"),
+  requirementId: uuid("requirement_id"),
+  taskId: uuid("task_id"),
+  createdByUserId: uuid("created_by_user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }),
   status: text("status"),
   removedAt: timestamp("removed_at", { withTimezone: true }),
   removedByUserId: uuid("removed_by_user_id"),

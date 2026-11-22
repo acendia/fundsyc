@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { ApiFetch, DiscussionLinkKind, DiscussionList, DiscussionRecord } from "./api-types";
 
-type Props = { proposalId: string; refreshKey: number; apiFetch: ApiFetch; onBusyChange: (busy: boolean) => void; onAccessLost: () => void };
+type Props = { initialDiscussionId?: string; proposalId: string; refreshKey: number; apiFetch: ApiFetch; onBusyChange: (busy: boolean) => void; onAccessLost: () => void };
 
 const kindLabels: Record<DiscussionLinkKind, string> = { task: "Task", event: "Event", workstream: "Workstream", milestone: "Milestone" };
 const linkGroups: { kind: DiscussionLinkKind; label: string; key: keyof DiscussionList["linkable"] }[] = [
@@ -20,9 +20,9 @@ function discussionValues(form: FormData) {
   return { title: String(form.get("title") ?? ""), body: String(form.get("body") ?? ""), linkKind, linkId };
 }
 
-export function DiscussionsPage({ proposalId, refreshKey, apiFetch, onBusyChange, onAccessLost }: Props) {
+export function DiscussionsPage({ initialDiscussionId, proposalId, refreshKey, apiFetch, onBusyChange, onAccessLost }: Props) {
   const [data, setData] = useState<DiscussionList | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(initialDiscussionId ?? null);
   const [editing, setEditing] = useState(false);
   const [editingReply, setEditingReply] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);

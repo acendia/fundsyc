@@ -1,12 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { documentCategories } from "./models";
 import type { ApiFetch, DocumentList, DocumentRecord } from "./api-types";
 
-type Props = { proposalId: string; refreshKey: number; apiFetch: ApiFetch; onBusyChange: (busy: boolean) => void; onAccessLost: () => void };
+type Props = { initialDocumentId?: string; proposalId: string; refreshKey: number; apiFetch: ApiFetch; onBusyChange: (busy: boolean) => void; onAccessLost: () => void };
 
-export function DocumentsPage({ proposalId, refreshKey, apiFetch, onBusyChange, onAccessLost }: Props) {
+export function DocumentsPage({ initialDocumentId, proposalId, refreshKey, apiFetch, onBusyChange, onAccessLost }: Props) {
   const [data, setData] = useState<DocumentList | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(initialDocumentId ?? null);
   const [editing, setEditing] = useState(false);
   const [revision, setRevision] = useState(0);
   const [message, setMessage] = useState("");
@@ -34,10 +33,34 @@ export function DocumentsPage({ proposalId, refreshKey, apiFetch, onBusyChange, 
         throw new Error(result.error || "Could not load documents.");
       }
       setData(result);
+      setCategoryFilter(value => result.categories.some((category: { value: string }) => category.value === value) ? value : "");
       setLoadError("");
     }).catch((error) => { if (!controller.signal.aborted) setLoadError(error.message); });
     return () => controller.abort();
   }, [path, revision, refreshKey, apiFetch, onAccessLost]);
+  async function changeCategory(event?: FormEvent<HTMLFormElement>, categoryId?: string) {
+    event?.preventDefault();
+    const form = event?.currentTarget;
+    const label = form ? String(new FormData(form).get("label") ?? "") : undefined;
+    setBusy(true); setMessage("");
+    try {
+      const response = await apiFetch(path + "/categories" + (categoryId ? "/" + categoryId : ""), {
+        method: categoryId ? "DELETE" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: categoryId ? undefined : JSON.stringify({ label }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        if ([403, 404, 409].includes(response.status)) setRevision(value => value + 1);
+        throw new Error(result.error || "Could not save category.");
+      }
+      form?.reset();
+      setMessage(categoryId ? "Category removed. Removed documents and their versions are preserved." : "Category added.");
+      setRevision(value => value + 1);
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not save category."); }
+    finally { setBusy(false); }
+  }
+  const categories = data?.categories ?? [];
   async function save(method: string, form?: HTMLFormElement, id?: string) {
     setBusy(true); setMessage("");
     try {
@@ -97,7 +120,10 @@ export function DocumentsPage({ proposalId, refreshKey, apiFetch, onBusyChange, 
     return <>
       <p><label>Title <input name="title" defaultValue={document?.title ?? ""} required /></label></p>
       <p><label>Description <textarea name="description" defaultValue={document?.description ?? ""} /></label></p>
-      <p><label>Category <select name="category" defaultValue={document?.category ?? documentCategories[0].value}>{documentCategories.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}</select></label></p>
+      <p><label>Category <select name="category" required defaultValue={document?.category ?? categories[0]?.value ?? ""}>
+        {categories.length === 0 && <option value="">No categories available</option>}
+        {categories.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}
+      </select></label></p>
       <p><label>Owner <select name="ownerUserId" defaultValue={document?.owner_user_id ?? data?.current_user_id} required>
         {document && !owners.some((owner) => owner.user_id === document.owner_user_id) && <option value="" >Choose an active owner</option>}
         {owners.map((owner) => <option key={owner.user_id} value={owner.user_id}>{owner.display_name}</option>)}
@@ -107,7 +133,7 @@ export function DocumentsPage({ proposalId, refreshKey, apiFetch, onBusyChange, 
   const document = data?.documents.find((item) => item.id === selected);
   const reviewLabels: Record<string, string> = { not_submitted: "Not submitted", in_review: "In review", approved: "Approved", changes_requested: "Changes requested", pending: "Pending", cancelled: "Cancelled" };
   const filteredDocuments = data?.documents.filter((item) => item.title.toLowerCase().includes(search.trim().toLowerCase()) && (!categoryFilter || item.category === categoryFilter) && (!ownerFilter || item.owner_user_id === ownerFilter) && (!reviewFilter || (item.versions[0]?.review_status ?? "not_submitted") === reviewFilter) && (!myReviews || item.versions.some((version) => version.reviews.some((review) => review.reviewer_user_id === data.current_user_id && review.status === "pending")))) ?? [];
-  const categoryLabel = (value: string) => documentCategories.find((category) => category.value === value)?.label ?? value;
+  const categoryLabel = (value: string) => categories.find((category) => category.value === value)?.label ?? value;
   return <main>
     <h1>Documents</h1>
     {message && <p role="status">{message}</p>}
@@ -163,10 +189,25 @@ export function DocumentsPage({ proposalId, refreshKey, apiFetch, onBusyChange, 
           {document.can_edit && <><button type="button" disabled={busy} onClick={() => { setEditing(true); setAddingVersion(false); setReviewVersion(null); }}>Edit information</button>{" "}<button type="button" disabled={busy} onClick={() => { if (window.confirm(`Mark ${document.title} as removed? Its versions will be kept.`)) void save("DELETE", undefined, document.id); }}>Remove document</button></>}
         </>}
       </section> : <><p>Document is no longer available.</p><button type="button" onClick={() => { setSelected(null); setEditing(false); setAddingVersion(false); setReviewVersion(null); }}>Back to documents</button></> : <>
-        <h2>Active documents</h2>
+         <h2>Active documents</h2>
+         {data.can_manage_categories && <details className="section section-records">
+           <summary>Manage document categories</summary>
+           <p>Categories apply to this proposal. Remove the active documents in a category yourself before removing it. No documents are removed automatically.</p>
+           <ul>{categories.map(category => <li key={category.id}>
+             {category.label} — {category.document_count} active document{category.document_count === 1 ? "" : "s"}{" "}
+             <button type="button" disabled={busy} onClick={() => {
+               if (category.document_count) { setMessage(`This category contains ${category.document_count} active document${category.document_count === 1 ? "" : "s"}. Remove these documents yourself before removing the category. No documents have been removed.`); return; }
+               if (window.confirm(`Remove the category "${category.label}"?`)) void changeCategory(undefined, category.id);
+             }}>Remove category</button>
+           </li>)}</ul>
+           <form onSubmit={event => void changeCategory(event)}><fieldset disabled={busy}>
+             <p><label>New category <input name="label" required maxLength={80} /></label></p>
+             <button>Add category</button>
+           </fieldset></form>
+         </details>}
         <section aria-label="Document filters">
           <p><label>Search title <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} /></label></p>
-          <p><label>Category filter <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="">All categories</option>{documentCategories.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}</select></label>{" "}
+          <p><label>Category filter <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="">All categories</option>{categories.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}</select></label>{" "}
           <label>Owner filter <select value={ownerFilter} onChange={(event) => setOwnerFilter(event.target.value)}><option value="">All owners</option>{Array.from(new Map(data.documents.map((item) => [item.owner_user_id,item.owner_name])).entries()).map(([id,name]) => <option key={id} value={id}>{name}</option>)}</select></label>{" "}
           <label>Current version review state <select value={reviewFilter} onChange={(event) => setReviewFilter(event.target.value)}><option value="">All review states</option>{["not_submitted","in_review","approved","changes_requested"].map((state) => <option key={state} value={state}>{reviewLabels[state]}</option>)}</select></label></p>
           <p><label><input type="checkbox" checked={myReviews} onChange={(event) => setMyReviews(event.target.checked)} /> Reviews assigned to me</label></p>
@@ -175,11 +216,12 @@ export function DocumentsPage({ proposalId, refreshKey, apiFetch, onBusyChange, 
         {filteredDocuments.length === 0 ? <p>{data.documents.length === 0 ? "No documents yet." : "No documents match these filters."}</p> : <table><thead><tr><th>Title</th><th>Category</th><th>Owner</th><th>Version</th><th>Review state</th><th>Last modified</th><th>Actions</th></tr></thead><tbody>{filteredDocuments.map((item) => <tr key={item.id}>
           <td>{item.title}</td><td>{categoryLabel(item.category)}</td><td>{item.owner_name}</td><td>{item.versions[0]?.version_number ?? "—"}</td><td>{reviewLabels[item.versions[0]?.review_status] ?? "—"}</td><td>{new Date(item.updated_at).toLocaleString()}</td><td><button type="button" onClick={() => { setSelected(item.id); setAddingVersion(false); setMessage(""); }}>Details</button>{" "}{item.versions[0]?.external_url ? <a href={item.versions[0].external_url} target="_blank" rel="noopener noreferrer">Open link</a> : item.versions[0]?.source_kind === "uploaded_file" && <button type="button" disabled={busy} onClick={() => download(item.id, item.versions[0].id, item.versions[0].file_name ?? "document")}>Download</button>}</td>
         </tr>)}</tbody></table>}
-        {data.can_add ? <section className="section section-create"><h2>Add a document</h2><form onSubmit={(event) => { event.preventDefault(); void save("POST", event.currentTarget); }}>
+         {data.can_add ? <section className="section section-create"><h2>Add a document</h2><form onSubmit={(event) => { event.preventDefault(); void save("POST", event.currentTarget); }}>
+          {categories.length === 0 && <p>The proposal coordinator must add a category before you can add documents.</p>}
           <p><label>Source <select value={source} onChange={(event) => setSource(event.target.value)}><option value="link">External link</option><option value="file">Upload file</option></select></label></p>
           {fields()}
           {source === "file" ? <p><label>File <input name="file" type="file" accept=".doc,.docx,.xls,.xlsx,.pdf" required /></label> (up to 10 MB)</p> : <p><label>Link <input name="url" type="url" placeholder="https://" required /></label></p>}
-          <button disabled={busy}>{busy ? "Saving..." : "Add document"}</button>
+          <button disabled={busy || categories.length === 0}>{busy ? "Saving..." : "Add document"}</button>
           {message && <p role="status">{message}</p>}
         </form></section> : <p>You can view documents. Adding and editing requires an editable proposal and an appropriate role.</p>}
       </>}

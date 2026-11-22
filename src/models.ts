@@ -37,7 +37,7 @@ export const documentCategories = [
   { value: "supporting_evidence", label: "Supporting evidence" },
 ] as const;
 
-export type DocumentCategory = (typeof documentCategories)[number]["value"];
+export type DocumentCategory = string;
 export type DocumentStatus = "active" | "removed";
 
 export type DocumentSourceKind = "uploaded_file" | "external_link";
@@ -526,6 +526,54 @@ export class ScheduleEvent {
     public createdAt: Date,
     public updatedAt: Date,
     public status: ScheduleItemStatus = "active",
+    public removedAt: Date | null = null,
+    public removedByUserId: UUID | null = null,
+  ) {}
+}
+
+export const requirementCategoryOptions = [
+  { value: "eligibility", label: "Eligibility" },
+  { value: "administrative", label: "Administrative" },
+  { value: "submission", label: "Submission" },
+] as const;
+
+export type RequirementCategory = (typeof requirementCategoryOptions)[number]["value"];
+// shown progress is worked out from the linked tasks, it is never stored
+export type RequirementProgress = "not_started" | "in_progress" | "in_review" | "completed";
+
+export class Requirement {
+  constructor(
+    public id: UUID,
+    public proposalId: UUID,
+    public requirementNumber: number,
+    public title: string,
+    public category: RequirementCategory,
+    public priority: TaskPriority,
+    public createdByUserId: UUID,
+    public updatedByUserId: UUID,
+    public createdAt: Date,
+    public updatedAt: Date,
+    public description: string | null = null,
+    public ownerUserId: UUID | null = null,
+    public partnerId: UUID | null = null,
+    public dueDate: string | null = null,
+    // only used while no task is linked
+    public manualCompleted = false,
+    public status: "active" | "removed" = "active",
+    public removedAt: Date | null = null,
+    public removedByUserId: UUID | null = null,
+  ) {}
+}
+
+export class RequirementTask {
+  constructor(
+    public id: UUID,
+    public proposalId: UUID,
+    public requirementId: UUID,
+    public taskId: UUID,
+    public createdByUserId: UUID,
+    public createdAt: Date,
+    public status: "active" | "removed" = "active",
     public removedAt: Date | null = null,
     public removedByUserId: UUID | null = null,
   ) {}

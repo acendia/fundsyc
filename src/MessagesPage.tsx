@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { ApiFetch, ConversationDetail, ConversationList, ConversationMember, ConversationMessage, MessagePerson } from "./api-types";
 
-type Props = { proposalId: string; refreshKey: number; apiFetch: ApiFetch; onBusyChange: (busy: boolean) => void; onAccessLost: () => void };
+type Props = { initialConversationId?: string; proposalId: string; refreshKey: number; apiFetch: ApiFetch; onBusyChange: (busy: boolean) => void; onAccessLost: () => void };
 
 const dateTime = (value: string) => new Date(value).toLocaleString();
 const unavailable = "The Messages API is unavailable. Restart the local app and try again.";
@@ -12,10 +12,10 @@ async function readJson(response: Response) {
   return response.json();
 }
 
-export function MessagesPage({ proposalId, refreshKey, apiFetch, onBusyChange, onAccessLost }: Props) {
+export function MessagesPage({ initialConversationId, proposalId, refreshKey, apiFetch, onBusyChange, onAccessLost }: Props) {
   const [list, setList] = useState<ConversationList | null>(null);
   const [listError, setListError] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialConversationId ?? null);
   const [detail, setDetail] = useState<ConversationDetail | null>(null);
   const [threadError, setThreadError] = useState("");
   const [revision, setRevision] = useState(0);

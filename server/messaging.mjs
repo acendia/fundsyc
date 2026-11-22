@@ -69,6 +69,20 @@ function withPermissions(actor, proposal, conversation, participant, messages) {
   }));
 }
 
+// both messages and overview list only the caller's own active conversations
+export async function loadConversationSummaries(database, proposalId, userId, limit = null) {
+  return (await database.query(`select c.id,c.kind,
+      case when c.kind='group' then c.title else other.display_name end as title,
+      c.created_by_user_id,c.created_at,coalesce(lastmsg.created_at,c.created_at) as last_activity_at
+    from conversation_members me
+    join conversations c on c.id=me.conversation_id and c.proposal_id=me.proposal_id
+    left join lateral (select u.display_name from conversation_members o join users u on u.id=o.user_id
+      where o.conversation_id=c.id and o.user_id<>me.user_id and o.status='active' limit 1) other on c.kind='direct'
+    left join lateral (select max(m.created_at) as created_at from messages m where m.conversation_id=c.id and m.status='active') lastmsg on true
+    where me.proposal_id=$1 and me.user_id=$2 and me.status='active' and c.status='active'
+    order by last_activity_at desc,c.id desc ${limit === null ? "" : "limit $3"}`, limit === null ? [proposalId, userId] : [proposalId, userId, limit])).rows;
+}
+
 export function addMessagingRoutes(app) {
   const base = "/api/proposals/:proposalId/conversations";
   // messages are private, so nothing here may be cached
@@ -81,16 +95,7 @@ export function addMessagingRoutes(app) {
       const { actor, proposal } = await loadMessagingPermissionContext(req.database, proposalId, req.userId);
       if (!canReadMessaging(actor, proposal)) return res.status(403).json({ error: "You do not have access to this proposal." });
       // only chats where the caller is still an active participant, no message text here
-      const conversations = (await req.database.query(`select c.id,c.kind,
-          case when c.kind='group' then c.title else other.display_name end as title,
-          c.created_by_user_id,c.created_at,coalesce(lastmsg.created_at,c.created_at) as last_activity_at
-        from conversation_members me
-        join conversations c on c.id=me.conversation_id and c.proposal_id=me.proposal_id
-        left join lateral (select u.display_name from conversation_members o join users u on u.id=o.user_id
-          where o.conversation_id=c.id and o.user_id<>me.user_id and o.status='active' limit 1) other on c.kind='direct'
-        left join lateral (select max(m.created_at) as created_at from messages m where m.conversation_id=c.id and m.status='active') lastmsg on true
-        where me.proposal_id=$1 and me.user_id=$2 and me.status='active' and c.status='active'
-        order by last_activity_at desc,c.id desc`, [proposalId, req.userId])).rows;
+      const conversations = await loadConversationSummaries(req.database, proposalId, req.userId);
       const people = canWriteMessaging(actor, proposal)
         ? (await req.database.query(`${eligibleMembers} and m.user_id<>$2 order by u.display_name,m.user_id`, [proposalId, req.userId])).rows
         : [];

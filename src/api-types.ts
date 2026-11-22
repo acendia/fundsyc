@@ -66,6 +66,8 @@ export type DocumentRecord = {
 };
 
 export type DocumentList = {
+  categories: { id: string; value: string; label: string; document_count: number }[];
+  can_manage_categories: boolean;
   reviewers: { user_id: string; display_name: string }[];
   proposal: { title: string; status: string };
   current_user_id: string;
@@ -244,4 +246,83 @@ export type ConversationDetail = {
   can_send: boolean;
   can_manage: boolean;
   can_leave: boolean;
+};
+
+export type RequirementTask = { id: string; title: string; progress: string; status: "active" | "removed" };
+export type RequirementRecord = {
+  id: string;
+  code: string;
+  requirement_number: number;
+  title: string;
+  description: string | null;
+  category: string;
+  owner_user_id: string | null;
+  owner_name: string | null;
+  partner_id: string | null;
+  partner_name: string | null;
+  due_date: string | null;
+  priority: string;
+  version: string;
+  created_by_name: string;
+  updated_by_name: string;
+  created_at: string;
+  updated_at: string;
+  completed: boolean;
+  progress: "not_started" | "in_progress" | "in_review" | "completed";
+  mode: "manual" | "tasks";
+  task_total: number;
+  task_completed: number;
+  tasks: RequirementTask[];
+  unfinished_tasks: { id: string; title: string; progress: string }[];
+  removed_tasks: { id: string; title: string }[];
+  attention: ("overdue" | "linked_task_removed" | "responsible_inactive")[];
+  can_edit: boolean;
+  can_remove: boolean;
+  can_complete: boolean;
+};
+export type RequirementList = {
+  proposal: { id: string; status: string };
+  current_user_id: string;
+  can_manage: boolean;
+  owners: { user_id: string; display_name: string; partner_name: string }[];
+  partners: { id: string; legal_name: string }[];
+  linkable_tasks: { id: string; title: string; progress: string }[];
+  summary: { total: number; completed: number; in_progress: number; in_review: number; needs_attention: number };
+  requirements: RequirementRecord[];
+};
+
+export type OverviewPageName = "consortium" | "documents" | "tasks" | "schedule" | "discussions" | "messages" | "requirements";
+export type OverviewTarget = { page: OverviewPageName; id?: string; scheduleKind?: "events" | "milestones" | "workstreams" };
+export type OverviewItem = {
+  kind: "tasks" | "requirements" | "documents" | "milestones" | "workstreams";
+  id: string;
+  title: string;
+  partner: string | null;
+  owner: string | null;
+  due_date: string | null;
+  reason: string;
+  overdue: boolean;
+};
+export type OverviewData = {
+  proposal: { id: string; title: string; acronym: string | null; status: string; coordinator_name: string };
+  role: string;
+  today: string;
+  through: string;
+  time_zone: string;
+  generated_at: string;
+  editable: boolean;
+  summary: {
+    tasks: { total: number; todo: number; completed: number; in_progress: number; in_review: number };
+    requirements: RequirementList["summary"];
+    documents: { total: number; pending_versions: number };
+    consortium: { partners: number; members: number };
+    upcoming: number;
+  };
+  attention: OverviewItem[];
+  mine: OverviewItem[];
+  upcoming: import("./schedule-calendar").CalendarEntry[];
+  timeline: { id: string; title: string; partner_name: string; start_date: string; end_date: string; progress: string }[];
+  discussions: { id: string; title: string; last_activity_at: string; reply_count: number }[];
+  messaging_available: boolean;
+  conversations: { id: string; kind: "direct" | "group"; title: string | null; last_activity_at: string }[];
 };

@@ -830,3 +830,190 @@ END;
 $$;
 CREATE TRIGGER message_author_check BEFORE INSERT OR UPDATE OF proposal_id,conversation_id,author_user_id,status ON messages
 FOR EACH ROW EXECUTE FUNCTION check_message_author();
+
+CREATE TABLE document_categories (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ proposal_id uuid NOT NULL REFERENCES proposals,
+ value text NOT NULL,
+ label text NOT NULL CHECK(length(trim(label)) BETWEEN 1 AND 80),
+ created_by_user_id uuid REFERENCES users,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ status text NOT NULL DEFAULT 'active' CHECK(status IN ('active','removed')),
+ removed_at timestamptz,
+ removed_by_user_id uuid REFERENCES users,
+ UNIQUE(proposal_id,value),
+ CHECK((status='active' AND removed_at IS NULL AND removed_by_user_id IS NULL)
+    OR (status='removed' AND removed_at IS NOT NULL AND removed_by_user_id IS NOT NULL))
+);
+CREATE UNIQUE INDEX document_categories_label ON document_categories(proposal_id,lower(trim(label))) WHERE status='active';
+
+-- existing values stay the same, including categories on removed documents
+INSERT INTO document_categories(proposal_id,value,label)
+SELECT p.id,d.value,d.label FROM proposals p CROSS JOIN (VALUES
+ ('proposal_drafts','Proposal drafts'),('budget_finance','Budget & finance'),
+ ('legal_documents','Legal documents'),('supporting_evidence','Supporting evidence')
+) AS d(value,label);
+ALTER TABLE documents DROP CONSTRAINT documents_category_check;
+ALTER TABLE documents ADD CONSTRAINT documents_category_fkey FOREIGN KEY(proposal_id,category) REFERENCES document_categories(proposal_id,value);
+CREATE INDEX documents_category ON documents(proposal_id,category) WHERE status='active';
+
+-- new proposals get the defaults too
+CREATE FUNCTION seed_document_categories() RETURNS trigger
+LANGUAGE plpgsql SET search_path = '' AS $$
+BEGIN
+ INSERT INTO public.document_categories(proposal_id,value,label) VALUES
+ (NEW.id,'proposal_drafts','Proposal drafts'),(NEW.id,'budget_finance','Budget & finance'),
+ (NEW.id,'legal_documents','Legal documents'),(NEW.id,'supporting_evidence','Supporting evidence');
+ RETURN NEW;
+END;
+$$;
+CREATE TRIGGER proposal_document_categories AFTER INSERT ON proposals
+FOR EACH ROW EXECUTE FUNCTION seed_document_categories();
+
+-- lock the category while assigning it, so removal cannot race a document save
+CREATE FUNCTION check_document_category() RETURNS trigger
+LANGUAGE plpgsql SET search_path = '' AS $$
+BEGIN
+ IF NEW.status='active' THEN
+  PERFORM 1 FROM public.document_categories
+   WHERE proposal_id=NEW.proposal_id AND value=NEW.category AND status='active' FOR SHARE;
+  IF NOT FOUND THEN
+   RAISE EXCEPTION 'Choose an active document category' USING ERRCODE='23514';
+  END IF;
+ END IF;
+ RETURN NEW;
+END;
+$$;
+CREATE TRIGGER document_category_check BEFORE INSERT OR UPDATE OF proposal_id,category,status ON documents
+FOR EACH ROW EXECUTE FUNCTION check_document_category();
+
+CREATE FUNCTION check_category_removal() RETURNS trigger
+LANGUAGE plpgsql SET search_path = '' AS $$
+BEGIN
+ IF NEW.status='removed' AND EXISTS (
+  SELECT 1 FROM public.documents WHERE proposal_id=OLD.proposal_id AND category=OLD.value AND status='active'
+ ) THEN
+  RAISE EXCEPTION 'Remove the documents in this category first' USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END;
+$$;
+CREATE TRIGGER document_category_removal BEFORE UPDATE OF status ON document_categories
+FOR EACH ROW EXECUTE FUNCTION check_category_removal();
+ALTER TABLE document_categories ENABLE ROW LEVEL SECURITY;
+DO $$ DECLARE client_role text;
+BEGIN
+ FOR client_role IN SELECT rolname FROM pg_roles WHERE rolname IN ('anon','authenticated') LOOP
+  EXECUTE format('REVOKE ALL ON TABLE document_categories FROM %I',client_role);
+ END LOOP;
+END;
+$$;
+
+-- requirements belong to one proposal, the code shown to people is REQ- plus the number
+CREATE TABLE requirements (
+ id uuid PRIMARY KEY,
+ proposal_id uuid NOT NULL REFERENCES proposals,
+ requirement_number integer NOT NULL CHECK(requirement_number > 0),
+ title text NOT NULL CHECK(length(trim(title)) > 0 AND length(title) <= 200),
+ description text CHECK(description IS NULL OR length(description) <= 10000),
+ category text NOT NULL CHECK(category IN ('eligibility','administrative','submission')),
+ -- no membership foreign key: a member who leaves must not block history
+ owner_user_id uuid REFERENCES users,
+ partner_id uuid,
+ due_date date,
+ priority text NOT NULL DEFAULT 'medium' CHECK(priority IN ('low','medium','high','urgent')),
+ -- only used while no task is linked, linked requirements follow their tasks
+ manual_completed boolean NOT NULL DEFAULT false,
+ created_by_user_id uuid NOT NULL REFERENCES users,
+ updated_by_user_id uuid NOT NULL REFERENCES users,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ updated_at timestamptz NOT NULL DEFAULT now(),
+ status text NOT NULL DEFAULT 'active' CHECK(status IN ('active','removed')),
+ removed_at timestamptz,
+ removed_by_user_id uuid REFERENCES users,
+ UNIQUE(proposal_id,id),
+ UNIQUE(proposal_id,requirement_number),
+ FOREIGN KEY(proposal_id,partner_id) REFERENCES consortium_partners(proposal_id,id),
+ CHECK(owner_user_id IS NULL OR partner_id IS NOT NULL),
+ CHECK((status='active' AND removed_at IS NULL AND removed_by_user_id IS NULL)
+    OR (status='removed' AND removed_at IS NOT NULL AND removed_by_user_id IS NOT NULL))
+);
+
+CREATE TABLE requirement_tasks (
+ id uuid PRIMARY KEY,
+ proposal_id uuid NOT NULL,
+ requirement_id uuid NOT NULL,
+ task_id uuid NOT NULL,
+ created_by_user_id uuid NOT NULL REFERENCES users,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ status text NOT NULL DEFAULT 'active' CHECK(status IN ('active','removed')),
+ removed_at timestamptz,
+ removed_by_user_id uuid REFERENCES users,
+ FOREIGN KEY(proposal_id,requirement_id) REFERENCES requirements(proposal_id,id),
+ FOREIGN KEY(proposal_id,task_id) REFERENCES tasks(proposal_id,id),
+ CHECK((status='active' AND removed_at IS NULL AND removed_by_user_id IS NULL)
+    OR (status='removed' AND removed_at IS NOT NULL AND removed_by_user_id IS NOT NULL))
+);
+CREATE UNIQUE INDEX requirement_tasks_active ON requirement_tasks(requirement_id,task_id) WHERE status='active';
+CREATE INDEX requirement_tasks_task ON requirement_tasks(proposal_id,task_id) WHERE status='active';
+CREATE INDEX requirements_proposal ON requirements(proposal_id,status);
+
+-- requirement access goes through the api
+ALTER TABLE requirements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE requirement_tasks ENABLE ROW LEVEL SECURITY;
+DO $$
+DECLARE client_role text;
+BEGIN
+ FOR client_role IN SELECT rolname FROM pg_roles WHERE rolname IN ('anon','authenticated') LOOP
+  EXECUTE format('REVOKE ALL ON TABLE requirements, requirement_tasks FROM %I', client_role);
+ END LOOP;
+END;
+$$;
+
+-- check new and changed owners only, keep history when someone leaves
+CREATE FUNCTION check_requirement_assignment() RETURNS trigger
+LANGUAGE plpgsql SET search_path = '' AS $$
+BEGIN
+ IF NEW.status<>'active' THEN
+  RETURN NEW;
+ END IF;
+ IF NEW.owner_user_id IS NOT NULL THEN
+  IF NOT EXISTS (
+   SELECT 1 FROM public.proposal_memberships m
+   JOIN public.users u ON u.id=m.user_id
+   JOIN public.consortium_partners cp ON cp.id=m.partner_id AND cp.proposal_id=m.proposal_id
+   WHERE m.proposal_id=NEW.proposal_id AND m.user_id=NEW.owner_user_id AND m.partner_id=NEW.partner_id
+    AND m.status='active' AND m.access_role<>'viewer' AND u.status='active' AND cp.status='active'
+  ) THEN
+   RAISE EXCEPTION 'Requirement owner must be an active non-viewer member of the responsible partner' USING ERRCODE='23514';
+  END IF;
+ ELSIF NEW.partner_id IS NOT NULL THEN
+  IF NOT EXISTS (SELECT 1 FROM public.consortium_partners
+    WHERE id=NEW.partner_id AND proposal_id=NEW.proposal_id AND status='active') THEN
+   RAISE EXCEPTION 'Requirement partner must be active in this proposal' USING ERRCODE='23514';
+  END IF;
+ END IF;
+ RETURN NEW;
+END;
+$$;
+CREATE TRIGGER requirement_assignment_check BEFORE INSERT OR UPDATE OF proposal_id,owner_user_id,partner_id ON requirements
+FOR EACH ROW EXECUTE FUNCTION check_requirement_assignment();
+
+-- a new link needs an active requirement and an active task of the same proposal
+CREATE FUNCTION check_requirement_task() RETURNS trigger
+LANGUAGE plpgsql SET search_path = '' AS $$
+BEGIN
+ IF NEW.status<>'active' THEN
+  RETURN NEW;
+ END IF;
+ IF NOT EXISTS (SELECT 1 FROM public.requirements WHERE id=NEW.requirement_id AND proposal_id=NEW.proposal_id AND status='active') THEN
+  RAISE EXCEPTION 'Linked requirement must be active in this proposal' USING ERRCODE='23514';
+ END IF;
+ IF NOT EXISTS (SELECT 1 FROM public.tasks WHERE id=NEW.task_id AND proposal_id=NEW.proposal_id AND status='active') THEN
+  RAISE EXCEPTION 'Linked task must be active in this proposal' USING ERRCODE='23514';
+ END IF;
+ RETURN NEW;
+END;
+$$;
+CREATE TRIGGER requirement_task_check BEFORE INSERT OR UPDATE OF proposal_id,requirement_id,task_id,status ON requirement_tasks
+FOR EACH ROW EXECUTE FUNCTION check_requirement_task();

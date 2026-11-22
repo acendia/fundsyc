@@ -52,6 +52,7 @@ type ScheduleData = {
   milestones: Item[];
 };
 type Props = {
+  initialItem?: { kind: Kind; id: string };
   onOpenTask: (id: string) => void;
   proposalId: string;
   refreshKey: number;
@@ -69,11 +70,11 @@ const dates = (kind: Kind, item: Item, timeZone: string) => {
   return entry.date + " · " + entryTime(entry) + " · " + timeZone;
 };
 
-export function SchedulePage({ onOpenTask, proposalId, refreshKey, apiFetch, onBusyChange, onAccessLost }: Props) {
+export function SchedulePage({ initialItem, onOpenTask, proposalId, refreshKey, apiFetch, onBusyChange, onAccessLost }: Props) {
   const [filters, setFilters] = useState({ ...emptyScheduleFilters });
   const [displayZone, setDisplayZone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
   const [data, setData] = useState<ScheduleData | null>(null);
-  const [selected, setSelected] = useState<{ kind: Kind; id: string } | null>(null);
+  const [selected, setSelected] = useState<{ kind: Kind; id: string } | null>(initialItem ?? null);
   const [creating, setCreating] = useState<Kind | null>(null);
   const [editing, setEditing] = useState(false);
   const [revision, setRevision] = useState(0);

@@ -1,0 +1,33 @@
+export type CalendarSourceItem = {
+  id: string;
+  title: string;
+  partner_name: string;
+  status?: string;
+  progress?: string;
+  event_date?: string;
+  due_date?: string | null;
+  all_day?: boolean;
+  starts_at?: string | null;
+  ends_at?: string | null;
+};
+export type CalendarEntry = {
+  id: string;
+  kind: "events" | "milestones" | "tasks";
+  title: string;
+  partner: string;
+  date: string;
+  lastDate: string;
+  time: string | null;
+  endTime: string | null;
+  endDate: string | null;
+  startsAt: number | null;
+  endsAt: number | null;
+  completed: boolean;
+};
+export function dateInZone(instant: Date, timeZone: string): string;
+export function addCalendarDays(date: string, days: number): string;
+export function moveCalendarMonth(month: string, offset: number): string;
+export function monthDays(month: string): string[];
+export function calendarEntries(events: CalendarSourceItem[], milestones: CalendarSourceItem[], timeZone: string, tasks?: CalendarSourceItem[]): CalendarEntry[];
+export function upcomingEntries(entries: CalendarEntry[], now: Date, timeZone: string): CalendarEntry[];
+export function entryTime(entry: CalendarEntry): string;

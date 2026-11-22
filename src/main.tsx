@@ -4,6 +4,8 @@ import { TasksPage } from "./TasksPage";
 import { DocumentsPage } from "./DocumentsPage";
 import { DiscussionsPage } from "./DiscussionsPage";
 import { MessagesPage } from "./MessagesPage";
+import { RequirementsPage } from "./RequirementsPage";
+import { OverviewPage } from "./OverviewPage";
 import { createRoot } from "react-dom/client";
 import { createClient, type SupabaseClient, type Session } from "@supabase/supabase-js";
 
@@ -60,15 +62,15 @@ function Login() {
 
 import "./sections.css";
 import { ConsortiumPage } from "./ConsortiumPage";
-import type { Proposal } from "./api-types";
+import type { Proposal, OverviewPageName, OverviewTarget } from "./api-types";
 
 type Invitation = { id: string; title: string; legal_name: string; kind: string; granted_role: string };
 
 function App() {
   const [proposals, setProposals] = useState<Proposal[] | null>(null);
   const [activeProposalId, setActiveProposalId] = useState<string | null>(null);
-  const [taskTarget, setTaskTarget] = useState<string | null>(null);
-  const [page, setPage] = useState<"consortium" | "documents" | "tasks" | "schedule" | "discussions" | "messages">("consortium");
+  const [itemTarget, setTarget] = useState<(OverviewTarget & { proposalId: string }) | null>(null);
+  const [page, setPage] = useState<OverviewPageName | "overview">("overview");
   const [revision, setRevision] = useState(0);
   const [error, setError] = useState("");
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -129,14 +131,21 @@ function App() {
     finally { setInviteBusy(false); }
   }
   const activeProposal = proposals?.find((proposal) => proposal.id === activeProposalId);
-  function navigate(next: "consortium" | "documents" | "tasks" | "schedule" | "discussions" | "messages") { setTaskTarget(null); setPageBusy(false); setPage(next); refresh(); }
+  const target = itemTarget?.proposalId === activeProposalId ? itemTarget : null;
+  function navigate(next: OverviewPageName | "overview") { setTarget(null); setPageBusy(false); setPage(next); refresh(); }
+  function openItem(next: OverviewTarget) {
+    if (!activeProposal) return;
+    setTarget({ ...next, proposalId: activeProposal.id }); setPageBusy(false); setPage(next.page); refresh();
+  }
   return <div className="workspace">
     <aside className="workspace-sidebar">
       <h2>FundSyc</h2>
       <nav aria-label="Proposal pages">
+        <button type="button" aria-current={page === "overview" ? "page" : undefined} disabled={!activeProposal || busy} onClick={() => navigate("overview")}>Overview</button>
         <button type="button" aria-current={page === "consortium" ? "page" : undefined} disabled={!activeProposal || busy} onClick={() => navigate("consortium")}>Consortium</button>
         <button type="button" aria-current={page === "documents" ? "page" : undefined} disabled={!activeProposal || busy} onClick={() => navigate("documents")}>Documents</button>
         <button type="button" aria-current={page === "tasks" ? "page" : undefined} disabled={!activeProposal || busy} onClick={() => navigate("tasks")}>Tasks</button>
+        <button type="button" aria-current={page === "requirements" ? "page" : undefined} disabled={!activeProposal || busy} onClick={() => navigate("requirements")}>Requirements</button>
         <button type="button" aria-current={page === "schedule" ? "page" : undefined} disabled={!activeProposal || busy} onClick={() => navigate("schedule")}>Schedule</button>
         <button type="button" aria-current={page === "discussions" ? "page" : undefined} disabled={!activeProposal || busy} onClick={() => navigate("discussions")}>Discussions</button>
         <button type="button" aria-current={page === "messages" ? "page" : undefined} disabled={!activeProposal || busy} onClick={() => navigate("messages")}>Messages</button>
@@ -145,7 +154,7 @@ function App() {
     <div className="workspace-content">
       <header className="workspace-header">
         <p><strong>Active proposal:</strong> {activeProposal?.title ?? "None selected"}</p>
-        <label>Proposal <select aria-label="Active proposal" value={activeProposalId ?? ""} disabled={!proposals?.length || busy} onChange={(event) => { setPageBusy(false); setTaskTarget(null); setActiveProposalId(event.target.value); setCreateMessage(""); refresh(); }}>
+        <label>Proposal <select aria-label="Active proposal" value={activeProposalId ?? ""} disabled={!proposals?.length || busy} onChange={(event) => { setPageBusy(false); setTarget(null); setPage("overview"); setActiveProposalId(event.target.value); setCreateMessage(""); refresh(); }}>
           {!proposals?.length && <option value="">No proposals</option>}
           {proposals?.map((proposal) => <option key={proposal.id} value={proposal.id}>{proposal.title}{proposal.acronym ? ` (${proposal.acronym})` : ""} — {proposal.status}</option>)}
         </select></label>
@@ -174,7 +183,15 @@ function App() {
           <p><label>City <input name="city" /></label></p><button>Create proposal</button>
         </fieldset></form>{createMessage && <p role="alert">{createMessage}</p>}
       </section>}
-      {activeProposal && (page === "schedule" ? <SchedulePage onOpenTask={id => { setTaskTarget(id); setPage("tasks"); setPageBusy(false); refresh(); }} key={`schedule:${activeProposal.id}`} proposalId={activeProposal.id} refreshKey={revision} apiFetch={apiFetch} onBusyChange={setPageBusy} onAccessLost={refresh} /> : page === "tasks" ? <TasksPage initialTaskId={taskTarget ?? undefined} key={`tasks:${activeProposal.id}`} proposalId={activeProposal.id} refreshKey={revision} apiFetch={apiFetch} onBusyChange={setPageBusy} onAccessLost={refresh} /> : page === "discussions" ? <DiscussionsPage key={`discussions:${activeProposal.id}`} proposalId={activeProposal.id} refreshKey={revision} apiFetch={apiFetch} onBusyChange={setPageBusy} onAccessLost={refresh} /> : page === "messages" ? <MessagesPage key={`messages:${activeProposal.id}`} proposalId={activeProposal.id} refreshKey={revision} apiFetch={apiFetch} onBusyChange={setPageBusy} onAccessLost={refresh} /> : page === "documents" ? <DocumentsPage key={`documents:${activeProposal.id}`} proposalId={activeProposal.id} refreshKey={revision} apiFetch={apiFetch} onBusyChange={setPageBusy} onAccessLost={refresh} /> : <ConsortiumPage key={`consortium:${activeProposal.id}`} proposal={activeProposal} apiFetch={apiFetch} onChange={refresh} onBusyChange={setPageBusy} />)}
+      {activeProposal && (page === "overview"
+        ? <OverviewPage key={`overview:${activeProposal.id}`} proposalId={activeProposal.id} refreshKey={revision} apiFetch={apiFetch} onAccessLost={refresh} onOpen={openItem} />
+        : page === "schedule" ? <SchedulePage initialItem={target?.page === "schedule" && target.id && target.scheduleKind ? { kind: target.scheduleKind, id: target.id } : undefined} onOpenTask={id => openItem({ page: "tasks", id })} key={`schedule:${activeProposal.id}:${target?.id ?? ""}`} proposalId={activeProposal.id} refreshKey={revision} apiFetch={apiFetch} onBusyChange={setPageBusy} onAccessLost={refresh} />
+        : page === "tasks" ? <TasksPage initialTaskId={target?.page === "tasks" ? target.id : undefined} key={`tasks:${activeProposal.id}:${target?.id ?? ""}`} proposalId={activeProposal.id} refreshKey={revision} apiFetch={apiFetch} onBusyChange={setPageBusy} onAccessLost={refresh} />
+        : page === "discussions" ? <DiscussionsPage initialDiscussionId={target?.page === "discussions" ? target.id : undefined} key={`discussions:${activeProposal.id}:${target?.id ?? ""}`} proposalId={activeProposal.id} refreshKey={revision} apiFetch={apiFetch} onBusyChange={setPageBusy} onAccessLost={refresh} />
+        : page === "requirements" ? <RequirementsPage initialRequirementId={target?.page === "requirements" ? target.id : undefined} onOpenTask={id => openItem({ page: "tasks", id })} key={`requirements:${activeProposal.id}:${target?.id ?? ""}`} proposalId={activeProposal.id} refreshKey={revision} apiFetch={apiFetch} onBusyChange={setPageBusy} onAccessLost={refresh} />
+        : page === "messages" ? <MessagesPage initialConversationId={target?.page === "messages" ? target.id : undefined} key={`messages:${activeProposal.id}:${target?.id ?? ""}`} proposalId={activeProposal.id} refreshKey={revision} apiFetch={apiFetch} onBusyChange={setPageBusy} onAccessLost={refresh} />
+        : page === "documents" ? <DocumentsPage initialDocumentId={target?.page === "documents" ? target.id : undefined} key={`documents:${activeProposal.id}:${target?.id ?? ""}`} proposalId={activeProposal.id} refreshKey={revision} apiFetch={apiFetch} onBusyChange={setPageBusy} onAccessLost={refresh} />
+        : <ConsortiumPage key={`consortium:${activeProposal.id}`} proposal={activeProposal} apiFetch={apiFetch} onChange={refresh} onBusyChange={setPageBusy} />)}
     </div>
   </div>;
 }

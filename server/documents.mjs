@@ -2,14 +2,16 @@ import multer from "multer";
 import { canAddDocument, canManageDocument, canChangeDocuments, documentMemberSql } from "./document-permissions.mjs";
 import { maxDocumentBytes } from "./document-storage.mjs";
 import { randomUUID } from "node:crypto";
+import { addDocumentCategoryRoutes, canManageCategories } from "./document-categories.mjs";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const categories = ["proposal_drafts", "budget_finance", "legal_documents", "supporting_evidence"];
 const memberSql = documentMemberSql;
 
 export function addDocumentRoutes(app, storage = null) {
+  addDocumentCategoryRoutes(app);
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: maxDocumentBytes, files: 1, fields: 4, fieldSize: 16000 } }).single("file");
   const base = "/api/proposals/:proposalId/documents";
   app.get(base, async (req, res) => {
+    res.set("Cache-Control", "private, no-store");
     if (!uuid.test(req.params.proposalId)) return res.status(404).json({error:"Proposal not found."});
     try {
       const members = (await req.database.query(memberSql, [req.params.proposalId])).rows;
@@ -20,7 +22,8 @@ export function addDocumentRoutes(app, storage = null) {
       const versions = await req.database.query("select v.id,v.document_id,v.version_number,v.source_kind,v.file_name,v.size_bytes,v.external_url,v.version_note,v.review_status,v.created_at,u.display_name as added_by_name from document_versions v join documents d on d.id=v.document_id and d.proposal_id=v.proposal_id join users u on u.id=v.added_by_user_id where d.proposal_id=$1 and d.status='active' order by v.version_number desc", [req.params.proposalId]);
       const reviews = (await poolReviews(req.database, req.params.proposalId));
       const writable = canChangeDocuments(proposal);
-      res.json({proposal, reviewers:members.filter(m=>m.user_id!==req.userId && canAddDocument(m)), current_user_id:req.userId, can_add:writable && canAddDocument(actor), owners:members.filter(m=>canManageDocument(actor,m,proposal.coordinator_partner_id)), documents:docs.rows.map(d=>({...d, can_edit:writable && canManageDocument(actor, {user_id:d.owner_user_id,partner_id:d.owner_partner_id},proposal.coordinator_partner_id), versions:versions.rows.filter(v=>v.document_id===d.id).map(v=>({...v,reviews:reviews.filter(r=>r.version_id===v.id).map(r=>({...r,can_respond:writable && r.status==='pending' && r.reviewer_user_id===req.userId && canAddDocument(actor),can_cancel:writable && r.status==='pending' && canManageDocument(actor,{user_id:d.owner_user_id,partner_id:d.owner_partner_id},proposal.coordinator_partner_id)}))}))}))});
+      const categories = (await req.database.query("select c.id,c.value,c.label,(select count(*)::int from documents d where d.proposal_id=c.proposal_id and d.category=c.value and d.status='active') as document_count from document_categories c where c.proposal_id=$1 and c.status='active' order by c.created_at,c.label,c.id", [req.params.proposalId])).rows;
+      res.json({categories, can_manage_categories:canManageCategories(actor,proposal), proposal, reviewers:members.filter(m=>m.user_id!==req.userId && canAddDocument(m)), current_user_id:req.userId, can_add:writable && canAddDocument(actor), owners:members.filter(m=>canManageDocument(actor,m,proposal.coordinator_partner_id)), documents:docs.rows.map(d=>({...d, can_edit:writable && canManageDocument(actor, {user_id:d.owner_user_id,partner_id:d.owner_partner_id},proposal.coordinator_partner_id), versions:versions.rows.filter(v=>v.document_id===d.id).map(v=>({...v,reviews:reviews.filter(r=>r.version_id===v.id).map(r=>({...r,can_respond:writable && r.status==='pending' && r.reviewer_user_id===req.userId && canAddDocument(actor),can_cancel:writable && r.status==='pending' && canManageDocument(actor,{user_id:d.owner_user_id,partner_id:d.owner_partner_id},proposal.coordinator_partner_id)}))}))}))});
     } catch(error) { console.error("document read failed",error); res.status(500).json({error:"Could not load documents."}); }
   });
   async function save(req,res,action) {
@@ -31,7 +34,7 @@ export function addDocumentRoutes(app, storage = null) {
     const creating = ["create", "upload"].includes(action);
     const uploading = ["upload", "version_upload"].includes(action);
     if (addingVersion && versionNote != null && typeof versionNote !== "string") return res.status(400).json({error:"Enter a valid version note."});
-    if((creating || action === "update") && (typeof title!=="string"||!title.trim()||!categories.includes(category)||!uuid.test(ownerUserId??"")||(description!=null&&typeof description!=="string")))return res.status(400).json({error:"Enter a title, category and owner."});
+    if((creating || action === "update") && (typeof title!=="string"||!title.trim()||typeof category!=="string"||!category||typeof ownerUserId!=="string"||!uuid.test(ownerUserId)||(description!=null&&typeof description!=="string")))return res.status(400).json({error:"Enter a title, category and owner."});
     let link;
     if(action==="create" || action==="version_link") { try {link=new URL(url);if(link.protocol!=="https:"||link.username||link.password)throw Error();}catch{return res.status(400).json({error:"Enter a valid HTTPS link."});} }
     let fileType;
@@ -53,6 +56,10 @@ export function addDocumentRoutes(app, storage = null) {
       const actor=members.find(m=>m.user_id===req.userId);
       if(!p||!actor){await c.query("rollback");return res.status(403).json({error:"You do not have access to this proposal."});}
       if(!canChangeDocuments(p)){await c.query("rollback");return res.status(409).json({error:"This proposal is read-only."});}
+      if (creating || action === "update") {
+        const activeCategory = await c.query("select 1 from document_categories where proposal_id=$1 and value=$2 and status='active' for share", [proposalId, category]);
+        if (!activeCategory.rowCount) { await c.query("rollback"); return res.status(400).json({error:"Choose an active document category. Refresh the page if a category was removed."}); }
+      }
       const owner=members.find(m=>m.user_id===ownerUserId);
       const id=documentId||randomUUID();
       if(!creating) {
