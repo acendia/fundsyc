@@ -197,3 +197,45 @@ export const scheduleEvents = pgTable("schedule_events", {
   removedAt: timestamp("removed_at", { withTimezone: true }),
   removedByUserId: uuid("removed_by_user_id"),
 });
+
+export const conversations = pgTable("conversations", {
+  id: uuid("id"),
+  proposalId: uuid("proposal_id"),
+  kind: text("kind"),
+  title: text("title"),
+  directUserLowId: uuid("direct_user_low_id"),
+  directUserHighId: uuid("direct_user_high_id"),
+  createdByUserId: uuid("created_by_user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
+  status: text("status"),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
+  removedByUserId: uuid("removed_by_user_id"),
+});
+
+export const conversationMembers = pgTable("conversation_members", {
+  id: uuid("id"),
+  proposalId: uuid("proposal_id"),
+  conversationId: uuid("conversation_id"),
+  userId: uuid("user_id"),
+  status: text("status"),
+  addedByUserId: uuid("added_by_user_id"),
+  joinedAt: timestamp("joined_at", { withTimezone: true }),
+  endedAt: timestamp("ended_at", { withTimezone: true }),
+  endedByUserId: uuid("ended_by_user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
+});
+
+export const messages = pgTable("messages", {
+  id: uuid("id"),
+  proposalId: uuid("proposal_id"),
+  conversationId: uuid("conversation_id"),
+  authorUserId: uuid("author_user_id"),
+  body: text("body"),
+  createdAt: timestamp("created_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }),
+  status: text("status"),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
+  removedByUserId: uuid("removed_by_user_id"),
+});

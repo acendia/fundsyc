@@ -2,6 +2,7 @@ import { addScheduleRoutes } from "./schedule.mjs";
 import express from "express";
 import { addTaskRoutes } from "./tasks.mjs";
 import { addDiscussionRoutes } from "./discussions.mjs";
+import { addMessagingRoutes } from "./messaging.mjs";
 import { createDocumentStorage } from "./document-storage.mjs";
 import { addDocumentReviewRoutes } from "./document-reviews.mjs";
 import { addDocumentRoutes } from "./documents.mjs";
@@ -189,6 +190,7 @@ app.get("/api/proposals", async (request, response) => {
 addScheduleRoutes(app);
 addTaskRoutes(app);
 addDiscussionRoutes(app);
+addMessagingRoutes(app);
 addDocumentRoutes(app, createDocumentStorage(authUrl, storageKey, storageBucket));
 addDocumentReviewRoutes(app);
 addInvitations(app);

@@ -388,6 +388,58 @@ export class DiscussionReply {
   ) {}
 }
 
+export type ConversationKind = "direct" | "group";
+
+// a direct chat has two users, a group has a name and its creator as a participant
+export class Conversation {
+  constructor(
+    public id: UUID,
+    public proposalId: UUID,
+    public kind: ConversationKind,
+    public title: string | null,
+    public directUserLowId: UUID | null,
+    public directUserHighId: UUID | null,
+    public createdByUserId: UUID,
+    public createdAt: Date,
+    public updatedAt: Date,
+    public status: "active" | "removed" = "active",
+    public removedAt: Date | null = null,
+    public removedByUserId: UUID | null = null,
+  ) {}
+}
+
+// one row per person in a conversation, a participant who leaves keeps the row
+export class ConversationMember {
+  constructor(
+    public id: UUID,
+    public proposalId: UUID,
+    public conversationId: UUID,
+    public userId: UUID,
+    public addedByUserId: UUID,
+    public joinedAt: Date,
+    public createdAt: Date,
+    public updatedAt: Date,
+    public status: "active" | "left" | "removed" = "active",
+    public endedAt: Date | null = null,
+    public endedByUserId: UUID | null = null,
+  ) {}
+}
+
+export class Message {
+  constructor(
+    public id: UUID,
+    public proposalId: UUID,
+    public conversationId: UUID,
+    public authorUserId: UUID,
+    public body: string,
+    public createdAt: Date,
+    public updatedAt: Date,
+    public status: "active" | "removed" = "active",
+    public removedAt: Date | null = null,
+    public removedByUserId: UUID | null = null,
+  ) {}
+}
+
 export const scheduleProgressOptions = [
   { value: "planned", label: "Planned" },
   { value: "in_progress", label: "In progress" },

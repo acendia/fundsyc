@@ -203,3 +203,45 @@ export type DiscussionList = {
   linkable: { tasks: DiscussionLinkable[]; events: DiscussionLinkable[]; workstreams: DiscussionLinkable[]; milestones: DiscussionLinkable[] };
   discussions: DiscussionRecord[];
 };
+
+export type MessagePerson = { user_id: string; display_name: string; partner_name: string; access_role: string };
+export type ConversationSummary = {
+  id: string;
+  kind: "direct" | "group";
+  // group name, or the other person's name for direct chats
+  title: string | null;
+  created_by_user_id: string;
+  created_at: string;
+  last_activity_at: string;
+};
+export type ConversationList = {
+  current_user_id: string;
+  can_start: boolean;
+  people: MessagePerson[];
+  conversations: ConversationSummary[];
+};
+export type ConversationMember = { user_id: string; display_name: string; partner_name: string | null; joined_at: string; is_creator: boolean };
+export type ConversationMessage = {
+  id: string;
+  conversation_id: string;
+  author_user_id: string;
+  author_name: string;
+  // null once the message is removed
+  body: string | null;
+  status: "active" | "removed";
+  created_at: string;
+  removed_at: string | null;
+  is_own: boolean;
+  can_remove: boolean;
+};
+export type ConversationDetail = {
+  current_user_id: string;
+  conversation: { id: string; kind: "direct" | "group"; title: string | null; created_by_user_id: string; status: string };
+  members: ConversationMember[];
+  addable: MessagePerson[];
+  messages: ConversationMessage[];
+  has_more: boolean;
+  can_send: boolean;
+  can_manage: boolean;
+  can_leave: boolean;
+};
