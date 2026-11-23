@@ -76,6 +76,7 @@ function App() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [inviteMessage, setInviteMessage] = useState("");
   const [inviteBusy, setInviteBusy] = useState(false);
+  const [showInvitations, setShowInvitations] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [saving, setSaving] = useState(false);
   const [createMessage, setCreateMessage] = useState("");
@@ -131,6 +132,8 @@ function App() {
     finally { setInviteBusy(false); }
   }
   const activeProposal = proposals?.find((proposal) => proposal.id === activeProposalId);
+  const noProposals = proposals?.length === 0;
+  const createExpanded = !showInvitations && (showCreate || noProposals);
   const target = itemTarget?.proposalId === activeProposalId ? itemTarget : null;
   function navigate(next: OverviewPageName | "overview") { setTarget(null); setPageBusy(false); setPage(next); refresh(); }
   function openItem(next: OverviewTarget) {
@@ -142,7 +145,7 @@ function App() {
       <h2>FundSyc</h2>
       <nav aria-label="Proposal pages">
         <button type="button" aria-current={page === "overview" ? "page" : undefined} disabled={!activeProposal || busy} onClick={() => navigate("overview")}>Overview</button>
-        <button type="button" aria-current={page === "consortium" ? "page" : undefined} disabled={!activeProposal || busy} onClick={() => navigate("consortium")}>Consortium</button>
+        <button type="button" aria-current={page === "consortium" ? "page" : undefined} disabled={(!activeProposal && !noProposals) || busy} onClick={() => navigate("consortium")}>Consortium</button>
         <button type="button" aria-current={page === "documents" ? "page" : undefined} disabled={!activeProposal || busy} onClick={() => navigate("documents")}>Documents</button>
         <button type="button" aria-current={page === "tasks" ? "page" : undefined} disabled={!activeProposal || busy} onClick={() => navigate("tasks")}>Tasks</button>
         <button type="button" aria-current={page === "requirements" ? "page" : undefined} disabled={!activeProposal || busy} onClick={() => navigate("requirements")}>Requirements</button>
@@ -160,28 +163,50 @@ function App() {
         </select></label>
       </header>
       <div className="workspace-tools">
-        {page === "consortium" && <button type="button" disabled={busy} onClick={() => setShowCreate((value) => !value)}>{showCreate ? "Close new proposal" : "New proposal"}</button>}{" "}
-        <button type="button" disabled={busy} onClick={refresh}>Refresh</button>
-        {page === "consortium" && <details><summary>My invitations ({invitations.length})</summary>
-          {invitations.length === 0 && <p>No pending invitations.</p>}
-          {invitations.map((invitation) => <div key={invitation.id}><p>{invitation.legal_name} — {invitation.title}{invitation.kind === "member" ? ` (${invitation.granted_role})` : ""}</p>
-            <button type="button" disabled={busy} onClick={() => resolveInvitation(invitation, "accept")}>Accept</button>{" "}<button type="button" disabled={busy} onClick={() => resolveInvitation(invitation, "decline")}>Decline</button>
-          </div>)}
-        </details>}
+        {page === "consortium" ? <>
+          <div className="consortium-tools" role="group" aria-label="Proposal tools">
+            <button type="button" aria-expanded={createExpanded} aria-controls="create-proposal" disabled={busy || (noProposals && createExpanded)} onClick={() => { setShowCreate(!createExpanded); setShowInvitations(false); }}><span aria-hidden="true">+</span> New proposal</button>
+            <button type="button" aria-expanded={showInvitations} aria-controls="my-invitations" disabled={busy} onClick={() => { setShowInvitations(value => !value); setShowCreate(false); }}>My invitations{invitations.length > 0 && <> <span className="consortium-tool-count">{invitations.length}</span></>} <span aria-hidden="true">{showInvitations ? "▴" : "▾"}</span></button>
+            <button type="button" className="consortium-tools-refresh" disabled={busy} onClick={refresh}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 4v6h-6M20 10a8 8 0 1 0 .6 4" /></svg>
+              Refresh
+            </button>
+          </div>
+          <section id="my-invitations" className="consortium-personal-invitations" aria-label="My invitations" hidden={!showInvitations}>
+            {invitations.length === 0 && <p>No pending invitations.</p>}
+            {invitations.map((invitation) => <div key={invitation.id}><p>{invitation.legal_name} — {invitation.title}{invitation.kind === "member" ? ` (${invitation.granted_role})` : ""}</p>
+              <button type="button" disabled={busy} onClick={() => resolveInvitation(invitation, "accept")}>Accept</button>{" "}<button type="button" disabled={busy} onClick={() => resolveInvitation(invitation, "decline")}>Decline</button>
+            </div>)}
+          </section>
+        </> : (page !== "overview" || !activeProposal) && <button type="button" disabled={busy} onClick={refresh}>Refresh</button>}
         {inviteMessage && <p role="status">{inviteMessage}</p>}
       </div>
       {error && <p role="alert">{error}</p>}
       {proposals === null && !error && <p>Loading proposals...</p>}
       {proposals?.length === 0 && <p>You do not belong to a proposal yet. Create one or accept an invitation.</p>}
-      {page === "consortium" && (showCreate || proposals?.length === 0) && <section className="section section-create">
-        <h2>Create a proposal</h2><p>You will be its coordinator manager and primary contact.</p>
-        <form onSubmit={createProposal}><fieldset disabled={busy}>
-          <p><label>Proposal title <input name="title" required /></label></p>
-          <p><label>Acronym <input name="acronym" /></label></p>
-          <p><label>Coordinator organization <input name="organization" required /></label></p>
-          <p><label>Country code <input name="countryCode" required pattern="[A-Za-z]{2}" maxLength={2} placeholder="GR" /></label></p>
-          <p><label>City <input name="city" /></label></p><button>Create proposal</button>
-        </fieldset></form>{createMessage && <p role="alert">{createMessage}</p>}
+      {page === "consortium" && <section id="create-proposal" className="consortium-create" aria-labelledby="create-proposal-heading" hidden={!createExpanded}>
+        <header>
+          <h2 id="create-proposal-heading">Create a proposal</h2>
+          <p>You’ll be the proposal’s coordinator manager and primary contact.</p>
+        </header>
+        <form onSubmit={createProposal}>
+          <fieldset disabled={busy}>
+            <div className="consortium-create-fields">
+              <label><span>Proposal title</span><input name="title" required /></label>
+              <label><span>Acronym <small>Optional</small></span><input name="acronym" /></label>
+              <label className="consortium-create-wide"><span>Coordinator organization</span><input name="organization" required /></label>
+              <label><span>City <small>Optional</small></span><input name="city" /></label>
+              <div>
+                <label><span>Country code</span><input name="countryCode" required pattern="[A-Za-z]{2}" maxLength={2} placeholder="GR" aria-describedby="create-country-hint" /></label>
+                <small id="create-country-hint">Two letters, e.g. GR for Greece.</small>
+              </div>
+            </div>
+            <div className="consortium-create-actions">
+              {createMessage && <p role="alert">{createMessage}</p>}
+              <button type="submit">{saving ? "Creating…" : "Create proposal"}</button>
+            </div>
+          </fieldset>
+        </form>
       </section>}
       {activeProposal && (page === "overview"
         ? <OverviewPage key={`overview:${activeProposal.id}`} proposalId={activeProposal.id} refreshKey={revision} apiFetch={apiFetch} onAccessLost={refresh} onOpen={openItem} />
