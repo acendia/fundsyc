@@ -7,6 +7,22 @@ export async function auditTaskEvent(client, proposalId, userId, action, taskId,
   await client.query("insert into audit_events(id,proposal_id,actor_user_id,action,entity_type,entity_id,metadata) values($1,$2,$3,$4,'task',$5,$6)", [randomUUID(), proposalId, userId, action, taskId, JSON.stringify(metadata)]);
 }
 
+// history is paged so a task with thousands of events never loads them all at once
+export const firstHistoryPage = 10;
+export const olderHistoryPage = 20;
+
+// newest first, keyset on (created_at,id) so new events never shift or repeat a page
+// before is the id of the oldest event already shown, null for the first page
+async function loadTaskHistory(database, proposalId, taskId, before, limit) {
+  const rows = (await database.query(`select e.id,e.action,e.metadata,e.created_at,coalesce(u.display_name,'Unknown user') as actor_name
+    from audit_events e left join users u on u.id=e.actor_user_id
+    where e.proposal_id=$1 and e.entity_type='task' and e.entity_id=$2
+      ${before ? "and (e.created_at,e.id) < (select c.created_at,c.id from audit_events c where c.id=$4 and c.proposal_id=$1 and c.entity_type='task' and c.entity_id=$2)" : ""}
+    order by e.created_at desc,e.id desc limit $3`, before ? [proposalId, taskId, limit + 1, before] : [proposalId, taskId, limit + 1])).rows;
+  // one extra row tells us if there is an older page without a second query
+  return { history: rows.slice(0, limit), has_more_history: rows.length > limit };
+}
+
 export function addTaskActivityRoutes(app) {
   const base = "/api/proposals/:proposalId/tasks/:taskId";
   app.get(`${base}/activity`, async (req, res) => {
@@ -18,12 +34,32 @@ export function addTaskActivityRoutes(app) {
       const task = (await req.database.query("select * from tasks where id=$1 and proposal_id=$2 and status='active'", [taskId, proposalId])).rows[0];
       if (!task) return res.status(404).json({ error: "Task not found." });
       const comments = (await req.database.query("select c.id,c.proposal_id,c.task_id,c.author_user_id,c.status,case when c.status='active' then c.body else null end as body,c.created_at,c.updated_at,c.removed_at,u.display_name as author_name from task_comments c join users u on u.id=c.author_user_id where c.proposal_id=$1 and c.task_id=$2 order by c.created_at,c.id", [proposalId, taskId])).rows;
-      const history = (await req.database.query("select e.id,e.action,e.metadata,e.created_at,coalesce(u.display_name,'Unknown user') as actor_name from audit_events e left join users u on u.id=e.actor_user_id where e.proposal_id=$1 and e.entity_type='task' and e.entity_id=$2 order by e.created_at desc,e.id desc", [proposalId, taskId])).rows;
+      const { history, has_more_history } = await loadTaskHistory(req.database, proposalId, taskId, null, firstHistoryPage);
+      const historyTotal = (await req.database.query("select count(*)::int as n from audit_events where proposal_id=$1 and entity_type='task' and entity_id=$2", [proposalId, taskId])).rows[0].n;
       res.set("Cache-Control", "private, no-store");
-      res.json({ can_comment: canCommentOnTask(actor, proposal, task), comments: comments.map(comment => ({ ...comment, can_edit: canEditTaskComment(actor, proposal, task, comment), can_remove: canRemoveTaskComment(actor, proposal, task, comment) })), history });
+      res.json({ can_comment: canCommentOnTask(actor, proposal, task), comments: comments.map(comment => ({ ...comment, can_edit: canEditTaskComment(actor, proposal, task, comment), can_remove: canRemoveTaskComment(actor, proposal, task, comment) })), history, has_more_history, history_total: historyTotal });
     } catch (error) {
       console.error("task activity read failed", error);
       res.status(500).json({ error: "Could not load task comments and history." });
+    }
+  });
+
+  // older history, same access checks as the activity read
+  app.get(`${base}/history`, async (req, res) => {
+    const { proposalId, taskId } = req.params;
+    const before = req.query.before;
+    if (![proposalId, taskId].every(id => uuid.test(id))) return res.status(404).json({ error: "Task not found." });
+    if (typeof before !== "string" || !uuid.test(before)) return res.status(400).json({ error: "Choose where the older history starts." });
+    try {
+      const { actor, proposal } = await loadTaskPermissionContext(req.database, proposalId, req.userId);
+      if (!canReadTasks(actor, proposal)) return res.status(403).json({ error: "You do not have access to this proposal." });
+      const task = (await req.database.query("select id from tasks where id=$1 and proposal_id=$2 and status='active'", [taskId, proposalId])).rows[0];
+      if (!task) return res.status(404).json({ error: "Task not found." });
+      res.set("Cache-Control", "private, no-store");
+      res.json(await loadTaskHistory(req.database, proposalId, taskId, before, olderHistoryPage));
+    } catch (error) {
+      console.error("task history read failed", error);
+      res.status(500).json({ error: "Could not load older task history." });
     }
   });
 

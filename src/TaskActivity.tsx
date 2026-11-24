@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import type { ApiFetch, TaskActivityRecord } from "./api-types";
+import type { ApiFetch, TaskActivityRecord, TaskHistoryEvent, TaskHistoryPage } from "./api-types";
 import { taskProgressOptions, taskPriorityOptions } from "./models";
 
 // same date style as the rest of the tasks screen
@@ -51,6 +51,11 @@ export function TaskActivity({ proposalId, taskId, refreshKey, apiFetch, busy, o
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [draft, setDraft] = useState("");
+  // older history pages the user asked for, cleared whenever the activity reloads
+  const [older, setOlder] = useState<TaskHistoryEvent[]>([]);
+  const [moreHistory, setMoreHistory] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyError, setHistoryError] = useState("");
   const path = `/api/proposals/${proposalId}/tasks/${taskId}`;
   useEffect(() => {
     const controller = new AbortController();
@@ -63,6 +68,7 @@ export function TaskActivity({ proposalId, taskId, refreshKey, apiFetch, busy, o
         throw new Error(result.error || "Could not load comments and history.");
       }
       setActivity(result);
+      setOlder([]); setMoreHistory(result.has_more_history); setHistoryError("");
       setError("");
     }).catch(error => { if (!controller.signal.aborted) { setActivity(null); setError(error.message); } });
     return () => controller.abort();
@@ -81,6 +87,23 @@ export function TaskActivity({ proposalId, taskId, refreshKey, apiFetch, busy, o
       onChange();
     } catch (error) { setMessage(error instanceof Error ? error.message : "Could not save comment."); }
     finally { onBusyChange(false); }
+  }
+  async function loadOlderHistory() {
+    const shown = [...(activity?.history ?? []), ...older];
+    const oldest = shown[shown.length - 1];
+    if (!oldest) return;
+    setLoadingHistory(true); setHistoryError("");
+    try {
+      const response = await apiFetch(`${path}/history?before=${oldest.id}`);
+      const result = await response.json();
+      if (!response.ok) {
+        if (response.status === 403 || response.status === 404) onAccessLost();
+        throw new Error(result.error || "Could not load older task history.");
+      }
+      const page = result as TaskHistoryPage;
+      setOlder(current => [...current, ...page.history]); setMoreHistory(page.has_more_history);
+    } catch (error) { setHistoryError(error instanceof Error ? error.message : "Could not load older task history."); }
+    finally { setLoadingHistory(false); }
   }
   function edit(event: FormEvent<HTMLFormElement>, id: string) {
     event.preventDefault();
@@ -113,13 +136,16 @@ export function TaskActivity({ proposalId, taskId, refreshKey, apiFetch, busy, o
       </>}
     </div>
     {activity && <div className="tasks-activity-column">
-      <h3>Task history</h3>
+      <h3>Task history{activity.history_total > 0 && <span className="tasks-count">{activity.history_total}</span>}</h3>
       {activity.history.length === 0 && <p className="tasks-muted">No recorded changes yet.</p>}
-      <ol className="tasks-history">{activity.history.map(event => <li key={event.id}>
+      <ol className="tasks-history">{[...activity.history, ...older].map(event => <li key={event.id}>
         <p><strong>{actions[event.action] ?? event.action}</strong></p>
         <p className="tasks-muted">{event.actor_name} · {when(event.created_at)}</p>
         {historyDetails(event.action, event.metadata).map((detail, index) => <p key={index} className="tasks-history-detail">{detail}</p>)}
       </li>)}</ol>
+      {activity.history.length > 0 && <p className="tasks-muted" role="status">Showing {activity.history.length + older.length} of {activity.history_total} {activity.history_total === 1 ? "change" : "changes"}</p>}
+      {historyError && <p className="tasks-feedback" role="alert">{historyError}</p>}
+      {moreHistory && <button type="button" className="tasks-button" disabled={loadingHistory} onClick={() => void loadOlderHistory()}>{loadingHistory ? "Loading…" : "Show older history"}</button>}
     </div>}
   </section>;
 }

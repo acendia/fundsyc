@@ -161,8 +161,13 @@ export type TaskCommentRecord = {
 export type TaskActivityRecord = {
   can_comment: boolean;
   comments: TaskCommentRecord[];
-  history: { id: string; action: string; actor_name: string; created_at: string; metadata: Record<string, unknown> }[];
+  // newest page only, older pages load on request
+  history: TaskHistoryEvent[];
+  has_more_history: boolean;
+  history_total: number;
 };
+export type TaskHistoryEvent = { id: string; action: string; actor_name: string; created_at: string; metadata: Record<string, unknown> };
+export type TaskHistoryPage = { history: TaskHistoryEvent[]; has_more_history: boolean };
 
 export type DiscussionLinkKind = "task" | "event" | "workstream" | "milestone";
 export type DiscussionLinkable = { id: string; title: string };

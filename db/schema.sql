@@ -83,6 +83,7 @@ CREATE INDEX contacts_partner ON partner_contacts(proposal_id,partner_id);
 CREATE INDEX assignments_responsibility ON partner_responsibilities(proposal_id,responsibility_id);
 CREATE INDEX invitations_proposal ON consortium_invitations(proposal_id,status,expires_at);
 CREATE INDEX audit_proposal ON audit_events(proposal_id,created_at);
+CREATE INDEX audit_task_history ON audit_events(proposal_id,entity_id,created_at DESC,id DESC) WHERE entity_type='task';
 
 CREATE UNIQUE INDEX active_contact_email ON partner_contacts(partner_id,email_key) WHERE status='active';
 

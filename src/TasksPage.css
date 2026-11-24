@@ -27,7 +27,8 @@
 .tasks-page .tasks-view-button:hover:not(:disabled) { background: #eaf2ff; text-decoration: none; }
 
 .tasks-feedback { padding: 0.55rem 0.75rem; border-radius: 0.4rem; background: #edf0f3; font-size: 0.85rem; }
-.tasks-muted { color: var(--task-muted); font-size: 0.85rem; }
+/* page prefix so status lines stay grey instead of the global green */
+.tasks-page .tasks-muted { color: var(--task-muted); font-size: 0.85rem; }
 .tasks-overdue { color: #9b1c1c; font-weight: 600; }
 .tasks-count { display: inline-block; min-width: 1.1rem; margin-inline-start: 0.35rem; padding: 0.05rem 0.35rem; border-radius: 0.7rem; background: #edf0f3; color: var(--task-muted); font-size: 0.75rem; font-weight: 600; text-align: center; font-variant-numeric: tabular-nums; }
 
