@@ -10,9 +10,10 @@
 .documents-page .documents-button, .documents-page .documents-primary, .documents-page .documents-editor button, .documents-page .documents-detail button:not(.overview-link) {
   display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.38rem 0.65rem; border: 1px solid var(--doc-border); border-radius: 0.4rem; background: white; font-size: 0.85rem; font-weight: 600;
 }
-.documents-page button.documents-primary { background: var(--doc-blue); border-color: var(--doc-blue); color: white; }
+/* the detail prefix keeps primary buttons blue inside the document detail too */
+.documents-page button.documents-primary, .documents-page .documents-detail button.documents-primary { background: var(--doc-blue); border-color: var(--doc-blue); color: white; }
 .documents-page :is(.documents-button, .documents-editor button, .documents-detail button):hover:not(:disabled) { background: #eaf2ff; text-decoration: none; }
-.documents-page button.documents-primary:hover:not(:disabled) { background: #1b4886; text-decoration: none; }
+.documents-page button.documents-primary:hover:not(:disabled), .documents-page .documents-detail button.documents-primary:hover:not(:disabled) { background: #1b4886; text-decoration: none; }
 .documents-page button:disabled { opacity: 0.6; cursor: default; text-decoration: none; }
 .documents-folders { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); gap: 0.65rem; }
 .documents-folders:not(:empty) { margin-bottom: 1.1rem; }
@@ -69,11 +70,14 @@
 .documents-empty { padding: 1rem; border-top: 1px solid var(--doc-border); color: var(--doc-muted); }
 .documents-empty p { margin: 0 0 0.25rem; }
 .documents-muted { color: var(--doc-muted); font-size: 0.85rem; }
-.documents-feedback { padding: 0.55rem 0.75rem; border-radius: 0.4rem; background: #edf0f3; font-size: 0.85rem; }
+/* neutral text, the same box shows both errors and confirmations */
+.documents-page .documents-feedback { padding: 0.55rem 0.75rem; border-radius: 0.4rem; background: #edf0f3; color: #18212f; font-size: 0.85rem; }
 .documents-editor, .documents-detail { padding: clamp(0.75rem, 2vw, 1.15rem); }
 .documents-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: 0.65rem 1rem; margin: 0.65rem 0 0; padding: 0; border: 0; min-width: 0; }
 .documents-form > p, .documents-detail form label { margin: 0; }
-.documents-form :is(h2, h3, .documents-form-actions) { grid-column: 1 / -1; }
+.documents-form :is(h2, h3, .documents-form-actions, .documents-wide) { grid-column: 1 / -1; }
+.documents-form h3 { margin: 0; font-size: 0.95rem; font-weight: 650; }
+.documents-form textarea { width: 100%; }
 .documents-page textarea { min-height: 3.25rem; resize: vertical; }
 .documents-category-list, .documents-versions { list-style: none; padding: 0; margin: 0.65rem 0; }
 .documents-category-list li { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.45rem; padding: 0.5rem 0; border-bottom: 1px solid var(--doc-border); }

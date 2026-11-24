@@ -65,6 +65,10 @@ import "./sections.css";
 import { ConsortiumPage } from "./ConsortiumPage";
 import type { Proposal, OverviewPageName, OverviewTarget } from "./api-types";
 
+function RefreshIcon() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 4v6h-6M20 10a8 8 0 1 0 .6 4" /></svg>;
+}
+
 type Invitation = { id: string; title: string; legal_name: string; kind: string; granted_role: string };
 
 function App() {
@@ -168,10 +172,7 @@ function App() {
           <div className="consortium-tools" role="group" aria-label="Proposal tools">
             <button type="button" aria-haspopup="dialog" disabled={busy} onClick={() => { setCreateMessage(""); setShowCreate(true); setShowInvitations(false); }}><span aria-hidden="true">+</span> New proposal</button>
             <button type="button" aria-expanded={showInvitations} aria-controls="my-invitations" disabled={busy} onClick={() => { setShowInvitations(value => !value); setShowCreate(false); }}>My invitations{invitations.length > 0 && <> <span className="consortium-tool-count">{invitations.length}</span></>} <span aria-hidden="true">{showInvitations ? "▴" : "▾"}</span></button>
-            <button type="button" className="consortium-tools-refresh" disabled={busy} onClick={refresh}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 4v6h-6M20 10a8 8 0 1 0 .6 4" /></svg>
-              Refresh
-            </button>
+            <button type="button" className="consortium-tools-refresh" disabled={busy} onClick={refresh}><RefreshIcon /> Refresh</button>
           </div>
           <section id="my-invitations" className="consortium-personal-invitations" aria-label="My invitations" hidden={!showInvitations}>
             {invitations.length === 0 && <p>No pending invitations.</p>}
@@ -179,7 +180,9 @@ function App() {
               <button type="button" disabled={busy} onClick={() => resolveInvitation(invitation, "accept")}>Accept</button>{" "}<button type="button" disabled={busy} onClick={() => resolveInvitation(invitation, "decline")}>Decline</button>
             </div>)}
           </section>
-        </> : (page !== "overview" || !activeProposal) && <button type="button" disabled={busy} onClick={refresh}>Refresh</button>}
+        </> : (page !== "overview" || !activeProposal) && <div className="consortium-tools" role="group" aria-label="Page tools">
+          <button type="button" className="consortium-tools-refresh" disabled={busy} onClick={refresh}><RefreshIcon /> Refresh</button>
+        </div>}
         {inviteMessage && <p role="status">{inviteMessage}</p>}
       </div>
       {error && <p role="alert">{error}</p>}

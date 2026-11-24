@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { ApiFetch, DocumentList, DocumentRecord, DocumentVersionRecord } from "./api-types";
 import "./DocumentsPage.css";
+import { Modal } from "./Modal";
 
 type Props = { initialDocumentId?: string; proposalId: string; refreshKey: number; apiFetch: ApiFetch; onBusyChange: (busy: boolean) => void; onAccessLost: () => void };
 
@@ -102,7 +103,7 @@ export function DocumentsPage({ initialDocumentId, proposalId, refreshKey, apiFe
       if (!response.headers.get("content-type")?.includes("application/json")) throw new Error("The upload API did not respond correctly. Restart the local app and try again.");
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Could not save document.");
-      if (!id) { form?.reset(); setSource("link"); }
+      if (!id) { form?.reset(); setSource("link"); setShowAdd(false); }
       if (method === "DELETE") setSelected(null);
       setEditing(false); setMessage(method === "DELETE" ? "Document marked as removed." : "Document saved.");
       setRevision((value) => value + 1);
@@ -177,18 +178,18 @@ export function DocumentsPage({ initialDocumentId, proposalId, refreshKey, apiFe
         <p>{document ? `${categoryLabel(document.category)} · ${data?.proposal.title}` : "One place for proposal files and supporting evidence."}</p>
       </div>
       {!selected && data && (data.can_manage_categories || data.can_add) && <div className="documents-heading-actions">
-        {data.can_manage_categories && <button type="button" className="documents-button" aria-expanded={showCategories} aria-controls="documents-manage-categories" disabled={busy} onClick={() => { setShowCategories(!showCategories); setShowAdd(false); }}>Manage categories</button>}
-        {data.can_add && <button type="button" className="documents-primary" aria-expanded={showAdd} aria-controls="documents-add" disabled={busy} onClick={() => { setShowAdd(!showAdd); setShowCategories(false); }}><span aria-hidden="true">+</span> Add document</button>}
+        {data.can_manage_categories && <button type="button" className="documents-button" aria-haspopup="dialog" disabled={busy} onClick={() => { setMessage(""); setShowCategories(true); setShowAdd(false); }}>Manage categories</button>}
+        {data.can_add && <button type="button" className="documents-primary" aria-haspopup="dialog" disabled={busy} onClick={() => { setMessage(""); setShowAdd(true); setShowCategories(false); }}><span aria-hidden="true">+</span> Add document</button>}
       </div>}
     </header>
-    {message && <p className="documents-feedback" role="status">{message}</p>}
+    {message && !showAdd && !showCategories && <p className="documents-feedback" role="status">{message}</p>}
     {loadError && <p className="documents-feedback" role="alert">{loadError}</p>}
     {!data && !loadError && <p role="status">Loading documents…</p>}
     {data && <>
        {selected ? document ? <section className="overview-panel documents-detail">
          {editing && document.can_edit ? <form className="documents-form" key={document.id} onSubmit={(event: FormEvent<HTMLFormElement>) => { event.preventDefault(); void save("PATCH", event.currentTarget, document.id); }}>
            <h2>Edit document information</h2>
-          {fields(document)}<button disabled={busy}>Save changes</button>{" "}<button type="button" onClick={() => setEditing(false)}>Cancel</button>
+          {fields(document)}<div className="documents-form-actions"><button className="documents-primary" disabled={busy}>Save changes</button><button type="button" onClick={() => setEditing(false)}>Cancel</button></div>
         </form> : <>
            <dl className="documents-metadata">
              <div><dt>Owner</dt><dd>{document.owner_name}</dd></div><div><dt>Added by</dt><dd>{document.added_by_name}</dd></div>
@@ -216,20 +217,20 @@ export function DocumentsPage({ initialDocumentId, proposalId, refreshKey, apiFe
            {reviewVersion && document.can_edit && <form className="documents-form documents-subform" key={reviewVersion} onSubmit={(event) => { event.preventDefault(); void changeReview(document.id, reviewVersion, Object.fromEntries(new FormData(event.currentTarget))); }}>
             <h3>Request review — version {document.versions.find((version) => version.id === reviewVersion)?.version_number}</h3>
             <p><label>Reviewer <select name="reviewerUserId" required>{data.reviewers.map((member) => <option key={member.user_id} value={member.user_id}>{member.display_name}</option>)}</select></label></p>
-            <p><label>Due date <input name="dueDate" type="date" /></label></p><p><label>Instructions <textarea name="instructions" /></label></p>
-            <button disabled={busy}>Request review</button>{" "}<button type="button" disabled={busy} onClick={() => setReviewVersion(null)}>Cancel</button>
+            <p><label>Due date <input name="dueDate" type="date" /></label></p><p className="documents-wide"><label>Instructions <textarea name="instructions" /></label></p>
+            <div className="documents-form-actions"><button className="documents-primary" disabled={busy}>Request review</button><button type="button" disabled={busy} onClick={() => setReviewVersion(null)}>Cancel</button></div>
           </form>}
           {document.can_edit && data.reviewers.length === 0 && <p>A review needs another active contributor or administrator in this proposal.</p>}
 
           <p>External links use the sharing permissions of the original service. Changes inside Google Docs are not tracked here; upload a file snapshot when a fixed copy is needed.</p>
            {addingVersion && document.can_edit && <form className="documents-form documents-subform" onSubmit={(event) => saveVersion(event, document.id)}>
             <h3>Add version {(document.versions[0]?.version_number ?? 0) + 1}</h3>
-            <p>Earlier versions will be kept. The new version starts as Not submitted.</p>
+            <p className="documents-wide documents-muted">Earlier versions will be kept. The new version starts as Not submitted.</p>
             <p><label>Version source <select value={versionSource} onChange={(event) => setVersionSource(event.target.value)}><option value="file">Upload file</option><option value="link">External link</option></select></label></p>
             {versionSource === "file" ? <p><label>Replacement file <input name="file" type="file" accept=".pdf,.doc,.docx,.xls,.xlsx" required /></label> (up to 10 MB)</p> : <p><label>New URL <input name="url" type="url" defaultValue={document.versions[0]?.external_url ?? ""} required /></label></p>}
-            <p><label>Version note <textarea name="versionNote" /></label></p>
-            <button disabled={busy}>{busy ? "Saving..." : "Save new version"}</button>{" "}<button type="button" disabled={busy} onClick={() => setAddingVersion(false)}>Cancel</button>
-            {message && <p role="status">{message}</p>}
+            <p className="documents-wide"><label>Version note <textarea name="versionNote" /></label></p>
+            <div className="documents-form-actions"><button className="documents-primary" disabled={busy}>{busy ? "Saving..." : "Save new version"}</button><button type="button" disabled={busy} onClick={() => setAddingVersion(false)}>Cancel</button></div>
+            {message && <p className="documents-wide" role="status">{message}</p>}
           </form>}
           {document.can_edit && !addingVersion && <p><button type="button" disabled={busy} onClick={() => { setReviewVersion(null); setAddingVersion(true); setVersionSource(document.versions[0]?.source_kind === "external_link" ? "link" : "file"); setMessage(""); }}>Add new version</button></p>}
           {document.can_edit && <><button type="button" disabled={busy} onClick={() => { setEditing(true); setAddingVersion(false); setReviewVersion(null); }}>Edit information</button>{" "}<button type="button" disabled={busy} onClick={() => { if (window.confirm(`Mark ${document.title} as removed? Its versions will be kept.`)) void save("DELETE", undefined, document.id); }}>Remove document</button></>}
@@ -241,8 +242,10 @@ export function DocumentsPage({ initialDocumentId, proposalId, refreshKey, apiFe
               <span><strong>{category.label}</strong><small>{category.document_count} {category.document_count === 1 ? "document" : "documents"}</small></span>
             </button>)}
           </div>
-          {data.can_manage_categories && <section id="documents-manage-categories" className="overview-panel documents-editor" hidden={!showCategories}>
-            <h2>Manage document categories</h2>
+          {data.can_manage_categories && <Modal open={showCategories} onClose={() => { setShowCategories(false); setMessage(""); }} labelledBy="documents-categories-heading" busy={busy}>
+           <section id="documents-manage-categories" className="documents-editor">
+            <h2 id="documents-categories-heading">Manage document categories</h2>
+            {message && <p className="documents-feedback" role="status">{message}</p>}
            <p>Categories apply to this proposal. Remove the active documents in a category yourself before removing it. No documents are removed automatically.</p>
             <ul className="documents-category-list">{categories.map(category => <li key={category.id}>
               <div><strong>{category.label}</strong><small>{category.document_count} active document{category.document_count === 1 ? "" : "s"}</small></div>
@@ -255,14 +258,19 @@ export function DocumentsPage({ initialDocumentId, proposalId, refreshKey, apiFe
              <p><label>New category <input name="label" required maxLength={80} /></label></p>
               <div className="documents-form-actions"><button className="documents-primary">Add category</button></div>
            </fieldset></form>
-          </section>}
-          {data.can_add && <section id="documents-add" className="overview-panel documents-editor" hidden={!showAdd}><h2>Add a document</h2><form className="documents-form" onSubmit={(event) => { event.preventDefault(); void save("POST", event.currentTarget); }}>
-          {categories.length === 0 && <p>The proposal coordinator must add a category before you can add documents.</p>}
+          </section>
+          </Modal>}
+          {data.can_add && <Modal open={showAdd} onClose={() => { setShowAdd(false); setMessage(""); }} labelledBy="documents-add-heading" busy={busy}>
+          <section id="documents-add" className="documents-editor"><h2 id="documents-add-heading">Add a document</h2>
+          {message && <p className="documents-feedback" role="status">{message}</p>}
+          <form className="documents-form" onSubmit={(event) => { event.preventDefault(); void save("POST", event.currentTarget); }}>
+          {categories.length === 0 && <p className="documents-wide">The proposal coordinator must add a category before you can add documents.</p>}
           <p><label>Source <select value={source} onChange={(event) => setSource(event.target.value)}><option value="link">External link</option><option value="file">Upload file</option></select></label></p>
           {fields()}
           {source === "file" ? <p><label>File <input name="file" type="file" accept=".doc,.docx,.xls,.xlsx,.pdf" required /></label> (up to 10 MB)</p> : <p><label>Link <input name="url" type="url" placeholder="https://" required /></label></p>}
-           <div className="documents-form-actions"><button className="documents-primary" disabled={busy || categories.length === 0}>{busy ? "Saving…" : "Add document"}</button><button type="button" disabled={busy} onClick={() => setShowAdd(false)}>Close</button></div>
-         </form></section>}
+           <div className="documents-form-actions"><button className="documents-primary" disabled={busy || categories.length === 0}>{busy ? "Saving…" : "Add document"}</button><button type="button" disabled={busy} onClick={() => { setShowAdd(false); setMessage(""); }}>Cancel</button></div>
+         </form></section>
+          </Modal>}
          <section className="documents-library" aria-labelledby="documents-library-heading">
            <div className="documents-library-heading">
              <div><h2 id="documents-library-heading">{categoryFilter ? categoryLabel(categoryFilter) : "All documents"}</h2>
