@@ -2,6 +2,10 @@ import { useEffect, useState, type FormEvent } from "react";
 import type { ApiFetch, TaskActivityRecord } from "./api-types";
 import { taskProgressOptions, taskPriorityOptions } from "./models";
 
+// same date style as the rest of the tasks screen
+const whenFormat = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
+const when = (value: string) => whenFormat.format(new Date(value));
+
 const actions: Record<string, string> = {
   "task.created": "Created task",
   "task.updated": "Updated task information",
@@ -82,33 +86,40 @@ export function TaskActivity({ proposalId, taskId, refreshKey, apiFetch, busy, o
     event.preventDefault();
     void save("PATCH", String(new FormData(event.currentTarget).get("body")), id);
   }
-  return <section aria-label="Comments and task history">
-    <h3>Comments</h3>
-    {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
-    {!activity && !error && <p>Loading comments and history...</p>}
-    {activity && <>
-      {activity.comments.length === 0 && <p>No comments yet.</p>}
-      {activity.comments.map(comment => <article key={comment.id}>
-        <p><strong>{comment.author_name}</strong> — {new Date(comment.created_at).toLocaleString()}{comment.updated_at !== comment.created_at && comment.status === "active" ? ` (edited ${new Date(comment.updated_at).toLocaleString()})` : ""}</p>
-        {comment.status === "removed" ? <p>Comment removed{comment.removed_at ? ` on ${new Date(comment.removed_at).toLocaleString()}` : ""}.</p> : editing === comment.id && comment.can_edit ? <form onSubmit={event => edit(event, comment.id)}>
-          <p><label>Edit comment <textarea name="body" defaultValue={comment.body ?? ""} required maxLength={10000} disabled={busy} /></label></p>
-          <button disabled={busy}>Save comment</button>{" "}<button type="button" disabled={busy} onClick={() => setEditing(null)}>Cancel</button>
-        </form> : <>
-          <p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{comment.body}</p>
-          {comment.can_edit && <button type="button" disabled={busy} onClick={() => setEditing(comment.id)}>Edit comment</button>}{" "}
-          {comment.can_remove && <button type="button" disabled={busy} onClick={() => { if (window.confirm("Mark this comment as removed?")) void save("DELETE", undefined, comment.id); }}>Remove comment</button>}
-        </>}
-      </article>)}
-      {activity.can_comment && <form onSubmit={event => { event.preventDefault(); void save("POST", draft); }}>
-        <p><label>New comment <textarea value={draft} onChange={event => setDraft(event.target.value)} required maxLength={10000} disabled={busy} /></label></p>
-        <button disabled={busy}>Add comment</button>
-      </form>}
+  return <section className="tasks-activity" aria-label="Comments and task history">
+    <div className="tasks-activity-column">
+      <h3>Comments{activity && <span className="tasks-count">{activity.comments.filter(comment => comment.status === "active").length}</span>}</h3>
+      {error && <p className="tasks-feedback" role="alert">{error}</p>}{message && <p className="tasks-feedback" role="status">{message}</p>}
+      {!activity && !error && <p className="tasks-muted">Loading comments and history…</p>}
+      {activity && <>
+        {activity.comments.length === 0 && <p className="tasks-muted">No comments yet.</p>}
+        {activity.comments.map(comment => <article className="tasks-comment" data-removed={comment.status === "removed" || undefined} key={comment.id}>
+          <p className="tasks-comment-meta"><strong>{comment.author_name}</strong> · {when(comment.created_at)}{comment.updated_at !== comment.created_at && comment.status === "active" ? ` (edited ${when(comment.updated_at)})` : ""}</p>
+          {comment.status === "removed" ? <p className="tasks-muted">Comment removed{comment.removed_at ? ` on ${when(comment.removed_at)}` : ""}.</p> : editing === comment.id && comment.can_edit ? <form onSubmit={event => edit(event, comment.id)}>
+            <label>Edit comment <textarea name="body" defaultValue={comment.body ?? ""} required maxLength={10000} disabled={busy} /></label>
+            <div className="tasks-actions"><button className="tasks-primary" disabled={busy}>Save comment</button><button type="button" className="tasks-button" disabled={busy} onClick={() => setEditing(null)}>Cancel</button></div>
+          </form> : <>
+            <p className="tasks-comment-body">{comment.body}</p>
+            {(comment.can_edit || comment.can_remove) && <div className="tasks-comment-actions">
+              {comment.can_edit && <button type="button" className="overview-link" disabled={busy} onClick={() => setEditing(comment.id)}>Edit comment</button>}
+              {comment.can_remove && <button type="button" className="overview-link tasks-danger" disabled={busy} onClick={() => { if (window.confirm("Mark this comment as removed?")) void save("DELETE", undefined, comment.id); }}>Remove comment</button>}
+            </div>}
+          </>}
+        </article>)}
+        {activity.can_comment && <form className="tasks-new-comment" onSubmit={event => { event.preventDefault(); void save("POST", draft); }}>
+          <label>New comment <textarea value={draft} onChange={event => setDraft(event.target.value)} required maxLength={10000} disabled={busy} /></label>
+          <div className="tasks-actions"><button className="tasks-primary" disabled={busy}>Add comment</button></div>
+        </form>}
+      </>}
+    </div>
+    {activity && <div className="tasks-activity-column">
       <h3>Task history</h3>
-      {activity.history.length === 0 && <p>No recorded changes yet.</p>}
-      <ul>{activity.history.map(event => <li key={event.id}>
-        <p>{actions[event.action] ?? event.action} — {event.actor_name} — {new Date(event.created_at).toLocaleString()}</p>
-        {historyDetails(event.action, event.metadata).map((detail, index) => <p key={index} style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{detail}</p>)}
-      </li>)}</ul>
-    </>}
+      {activity.history.length === 0 && <p className="tasks-muted">No recorded changes yet.</p>}
+      <ol className="tasks-history">{activity.history.map(event => <li key={event.id}>
+        <p><strong>{actions[event.action] ?? event.action}</strong></p>
+        <p className="tasks-muted">{event.actor_name} · {when(event.created_at)}</p>
+        {historyDetails(event.action, event.metadata).map((detail, index) => <p key={index} className="tasks-history-detail">{detail}</p>)}
+      </li>)}</ol>
+    </div>}
   </section>;
 }
