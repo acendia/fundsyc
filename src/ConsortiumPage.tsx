@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { ApiFetch, Contact, Proposal } from "./api-types";
+import { Modal } from "./Modal";
 
 type Props = { proposal: Proposal; apiFetch: ApiFetch; onChange: () => void; onBusyChange: (busy: boolean) => void };
 type PartnerFeedback = { partnerId: string; text: string };
@@ -34,7 +35,7 @@ export function ConsortiumPage({ proposal: selectedProposal, apiFetch, onChange,
       const response = await apiFetch("/api/invitations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...Object.fromEntries(new FormData(form)), proposalId }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Could not invite organization.");
-      form.reset(); setInviteMessage("Invitation created. The recipient can sign in to see it."); onChange();
+      form.reset(); setShowInvite(false); setInviteMessage("Invitation created. The recipient can sign in to see it."); onChange();
     } catch (error) { setInviteMessage(error instanceof Error ? error.message : "Could not invite organization."); }
     finally { setInviteBusy(false); }
   }
@@ -135,7 +136,7 @@ export function ConsortiumPage({ proposal: selectedProposal, apiFetch, onChange,
           <p className="overview-eyebrow">Proposal{selectedProposal.acronym ? ` / ${selectedProposal.acronym}` : ""}</p>
           <h1>Consortium</h1><p>Manage proposal partners, contacts and responsibilities.</p>
         </div>
-        {canManageResponsibilities && <button type="button" className="consortium-primary" aria-expanded={showInvite} aria-controls="consortium-invite" disabled={inviteBusy} onClick={() => setShowInvite(value => !value)}>{showInvite ? "Close invitation form" : "+ Invite organization"}</button>}
+        {canManageResponsibilities && <button type="button" className="consortium-primary" aria-haspopup="dialog" disabled={inviteBusy} onClick={() => { setInviteMessage(""); setShowInvite(true); }}>+ Invite organization</button>}
       </header>
       <section className="consortium-summary" aria-label="Consortium summary">
         <div className="overview-panel consortium-metric">
@@ -147,8 +148,10 @@ export function ConsortiumPage({ proposal: selectedProposal, apiFetch, onChange,
           <a href="#consortium-invitations">Review invitations below</a>
         </div>
       </section>
-      {canManageResponsibilities && <section id="consortium-invite" className="overview-panel" hidden={!showInvite}>
-          <h3>Invite an organization</h3>
+      {inviteMessage && !showInvite && <p className="consortium-invite-feedback" role="status">{inviteMessage}</p>}
+      {canManageResponsibilities && <Modal open={showInvite} onClose={() => setShowInvite(false)} labelledBy="consortium-invite-heading" busy={inviteBusy}>
+        <section id="consortium-invite">
+          <h3 id="consortium-invite-heading">Invite an organization</h3>
           <p>The recipient can see this invitation after signing in.</p>
           <form className="consortium-invite-form" onSubmit={(event) => inviteOrganization(event, selectedProposal.id)}>
             <p><label>Organization <input name="organization" required /></label></p>
@@ -158,8 +161,8 @@ export function ConsortiumPage({ proposal: selectedProposal, apiFetch, onChange,
             <button className="consortium-primary" disabled={inviteBusy}>Create invitation</button>
           </form>
           {inviteMessage && <p role="status">{inviteMessage}</p>}
-
-        </section>}
+        </section>
+      </Modal>}
       <section className="overview-panel consortium-table-panel" aria-labelledby="consortium-partners-heading">
         <div className="overview-panel-heading"><h2 id="consortium-partners-heading">Partners</h2><button type="button" className="overview-link" onClick={openEdit}>{canEditConsortium ? "Edit consortium" : "View consortium details"} →</button></div>
         <p>Organizations involved in this proposal.</p>

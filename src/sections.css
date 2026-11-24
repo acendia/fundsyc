@@ -271,6 +271,17 @@
 .consortium-personal-invitations p { margin: 0.25rem 0; }
 .consortium-personal-invitations > div + div { margin-top: 0.55rem; padding-top: 0.55rem; border-top: 1px solid #d9dfe5; }
 
+/* centered pop-up over a dimmed page */
+.modal { box-sizing: border-box; width: min(42rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); padding: 0; border: 1px solid #d9dfe5; border-radius: 0.55rem; background: #fff; color: #18212f; box-shadow: 0 12px 32px rgb(24 33 47 / 0.18); }
+.modal::backdrop { background: rgb(24 33 47 / 0.45); }
+.modal-content { position: relative; padding: 1rem 1.15rem; font: 0.9rem/1.45 system-ui, sans-serif; }
+.modal-content > section { margin: 0; padding: 0; border: 0; max-width: none; }
+.modal-content h2, .modal-content h3 { margin-top: 0; padding-inline-end: 2rem; }
+/* .modal prefix so page-wide button rules, like the consortium ones, do not override it */
+.modal .modal-close { position: absolute; top: 0.6rem; right: 0.6rem; display: flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; padding: 0; border: 1px solid transparent; border-radius: 0.35rem; background: transparent; color: #526477; font: 400 1.3rem/1 system-ui, sans-serif; text-align: center; text-decoration: none; cursor: pointer; }
+.modal .modal-close:hover:not(:disabled) { background: #f0f3f6; color: #18212f; text-decoration: none; }
+.modal .modal-close:focus-visible { outline: 2px solid #245ca8; outline-offset: 2px; }
+.consortium-invite-feedback { margin: 0 0 1rem; }
 .consortium-create { box-sizing: border-box; max-width: 42rem; margin: 1rem 0; padding: 1rem 1.15rem; border: 1px solid #d9dfe5; border-radius: 0.55rem; background: #fff; color: #18212f; font: 0.9rem/1.45 system-ui, sans-serif; }
 .consortium-create h2 { margin: 0; font-size: 1.15rem; }
 .consortium-create header p { margin: 0.25rem 0 1rem; color: #526477; }

@@ -6,6 +6,7 @@ import { DiscussionsPage } from "./DiscussionsPage";
 import { MessagesPage } from "./MessagesPage";
 import { RequirementsPage } from "./RequirementsPage";
 import { OverviewPage } from "./OverviewPage";
+import { Modal } from "./Modal";
 import { createRoot } from "react-dom/client";
 import { createClient, type SupabaseClient, type Session } from "@supabase/supabase-js";
 
@@ -133,9 +134,9 @@ function App() {
   }
   const activeProposal = proposals?.find((proposal) => proposal.id === activeProposalId);
   const noProposals = proposals?.length === 0;
-  const createExpanded = !showInvitations && (showCreate || noProposals);
+  const createExpanded = showCreate;
   const target = itemTarget?.proposalId === activeProposalId ? itemTarget : null;
-  function navigate(next: OverviewPageName | "overview") { setTarget(null); setPageBusy(false); setPage(next); refresh(); }
+  function navigate(next: OverviewPageName | "overview") { setTarget(null); setPageBusy(false); setShowCreate(false); setPage(next); refresh(); }
   function openItem(next: OverviewTarget) {
     if (!activeProposal) return;
     setTarget({ ...next, proposalId: activeProposal.id }); setPageBusy(false); setPage(next.page); refresh();
@@ -165,7 +166,7 @@ function App() {
       <div className="workspace-tools">
         {page === "consortium" ? <>
           <div className="consortium-tools" role="group" aria-label="Proposal tools">
-            <button type="button" aria-expanded={createExpanded} aria-controls="create-proposal" disabled={busy || (noProposals && createExpanded)} onClick={() => { setShowCreate(!createExpanded); setShowInvitations(false); }}><span aria-hidden="true">+</span> New proposal</button>
+            <button type="button" aria-haspopup="dialog" disabled={busy} onClick={() => { setCreateMessage(""); setShowCreate(true); setShowInvitations(false); }}><span aria-hidden="true">+</span> New proposal</button>
             <button type="button" aria-expanded={showInvitations} aria-controls="my-invitations" disabled={busy} onClick={() => { setShowInvitations(value => !value); setShowCreate(false); }}>My invitations{invitations.length > 0 && <> <span className="consortium-tool-count">{invitations.length}</span></>} <span aria-hidden="true">{showInvitations ? "▴" : "▾"}</span></button>
             <button type="button" className="consortium-tools-refresh" disabled={busy} onClick={refresh}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 4v6h-6M20 10a8 8 0 1 0 .6 4" /></svg>
@@ -184,7 +185,8 @@ function App() {
       {error && <p role="alert">{error}</p>}
       {proposals === null && !error && <p>Loading proposals...</p>}
       {proposals?.length === 0 && <p>You do not belong to a proposal yet. Create one or accept an invitation.</p>}
-      {page === "consortium" && <section id="create-proposal" className="consortium-create" aria-labelledby="create-proposal-heading" hidden={!createExpanded}>
+      {page === "consortium" && <Modal open={createExpanded} onClose={() => setShowCreate(false)} labelledBy="create-proposal-heading" busy={saving}>
+      <section id="create-proposal" className="consortium-create" aria-labelledby="create-proposal-heading">
         <header>
           <h2 id="create-proposal-heading">Create a proposal</h2>
           <p>You’ll be the proposal’s coordinator manager and primary contact.</p>
@@ -207,7 +209,8 @@ function App() {
             </div>
           </fieldset>
         </form>
-      </section>}
+      </section>
+      </Modal>}
       {activeProposal && (page === "overview"
         ? <OverviewPage key={`overview:${activeProposal.id}`} proposalId={activeProposal.id} refreshKey={revision} apiFetch={apiFetch} onAccessLost={refresh} onOpen={openItem} />
         : page === "schedule" ? <SchedulePage initialItem={target?.page === "schedule" && target.id && target.scheduleKind ? { kind: target.scheduleKind, id: target.id } : undefined} onOpenTask={id => openItem({ page: "tasks", id })} key={`schedule:${activeProposal.id}:${target?.id ?? ""}`} proposalId={activeProposal.id} refreshKey={revision} apiFetch={apiFetch} onBusyChange={setPageBusy} onAccessLost={refresh} />
