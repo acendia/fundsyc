@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { addCalendarDays, moveCalendarMonth } from "./schedule-calendar";
+import { addCalendarDays, dayLabel, moveCalendarMonth } from "./schedule-calendar";
 import { calendarDayCount, timelinePosition } from "./schedule-timeline";
 import { scheduleProgressOptions } from "./models";
 
@@ -39,27 +39,31 @@ export function ScheduleTimeline({ workstreams, milestones, today, onOpen }: Pro
   ].filter(row => timelinePosition(row.start, row.end, first, last))
     .sort((a, b) => a.start.localeCompare(b.start) || a.item.title.localeCompare(b.item.title) || a.item.id.localeCompare(b.item.id));
 
-  return <section className="section section-records" aria-label="Proposal timeline">
-    <h2>Proposal timeline</h2>
-    <p>
-      <button type="button" onClick={() => setMonth(value => moveCalendarMonth(value, -3))}>Previous 3 months</button>{" "}
-      <button type="button" onClick={() => setMonth(today.slice(0, 7))}>Current period</button>{" "}
-      <button type="button" onClick={() => setMonth(value => moveCalendarMonth(value, 3))}>Next 3 months</button>
-    </p>
-    <p aria-live="polite">{first} to {last} · Week markers are Mondays</p>
-    {rows.length === 0 ? <p>No workstreams or milestones in this period.</p> : <div className="schedule-records-scroll">
+  return <section className="schedule-panel" aria-labelledby="schedule-timeline-heading">
+    <div className="schedule-panel-heading">
+      <div><h2 id="schedule-timeline-heading">Proposal timeline</h2>
+        <p aria-live="polite">{dayLabel(first)} – {dayLabel(last)} · Week markers are Mondays</p></div>
+      <div className="schedule-nav" role="group" aria-label="Change timeline period">
+        <button type="button" aria-label="Previous 3 months" onClick={() => setMonth(value => moveCalendarMonth(value, -3))}>‹</button>
+        <button type="button" onClick={() => setMonth(today.slice(0, 7))}>Current period</button>
+        <button type="button" aria-label="Next 3 months" onClick={() => setMonth(value => moveCalendarMonth(value, 3))}>›</button>
+      </div>
+    </div>
+    {rows.length === 0 ? <p className="schedule-empty">No workstreams or milestones in this period.</p> : <div className="schedule-table-scroll" tabIndex={0} role="region" aria-label="Timeline table">
       <table className="schedule-timeline">
         <thead><tr><th scope="col">Workstream / milestone</th><th scope="col">Partner</th><th scope="col">Progress</th><th scope="col">Dates</th>
           <th scope="col" className="schedule-timeline-scale"><div className="schedule-timeline-ticks" aria-label="Timeline week markers">
-            {ticks.map(date => <span key={date} style={{ left: calendarDayCount(first, date) / totalDays * 100 + "%" }}>{dateLabel(date)}</span>)}
+            {/* every other monday gets a label so they never overlap, every monday keeps its line */}
+            {ticks.filter((_, index) => index % 2 === 0).map(date => <span key={date} style={{ left: calendarDayCount(first, date) / totalDays * 100 + "%" }}>{dateLabel(date)}</span>)}
           </div></th>
         </tr></thead>
         <tbody>{rows.map(({ item, kind, start, end }) => {
           const position = timelinePosition(start, end, first, last)!;
           const progress = scheduleProgressOptions.find(option => option.value === item.progress)?.label ?? item.progress;
           return <tr key={kind + item.id}>
-            <td><button type="button" onClick={() => onOpen(kind, item.id)}>{item.title}</button>{kind === "milestones" && " · Milestone"}</td>
-            <td>{item.partner_name}</td><td>{progress}</td><td>{kind === "milestones" ? start : start + " – " + end}</td>
+            <th scope="row"><button type="button" className="schedule-title-link" onClick={() => onOpen(kind, item.id)}>{item.title}</button><small>{kind === "milestones" ? "Milestone" : "Workstream"}</small></th>
+            <td>{item.partner_name}</td><td><span className="schedule-badge" data-progress={item.progress}>{progress}</span></td>
+            <td className="schedule-nowrap">{kind === "milestones" ? dayLabel(start) : dayLabel(start) + " – " + dayLabel(end)}</td>
             <td><div className="schedule-timeline-track" aria-label={item.title + " · " + start + " to " + end}>
               {ticks.map(date => <span className="schedule-timeline-tick" key={date} style={{ left: calendarDayCount(first, date) / totalDays * 100 + "%" }} />)}
               <button type="button" aria-label={"Open " + item.title} title={item.title + " · " + start + " to " + end}

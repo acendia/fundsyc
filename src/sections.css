@@ -32,43 +32,6 @@
   .workspace-header select { max-width: 100%; }
 }
 
-.schedule-calendar-layout { display: grid; grid-template-columns: minmax(0, 3fr) minmax(220px, 1fr); gap: 1rem; align-items: start; }
-.schedule-calendar-scroll { overflow-x: auto; }
-.schedule-calendar { border-collapse: collapse; table-layout: fixed; width: 100%; min-width: 650px; }
-.schedule-calendar caption { font-weight: bold; padding: 0.5rem; text-align: left; }
-.schedule-calendar th, .schedule-calendar td { border: 1px solid #bac4ce; padding: 0.4rem; color: #18212f; }
-.schedule-calendar th { font-size: 0.85rem; background: #edf0f3; }
-.schedule-calendar td { height: 100px; vertical-align: top; background: white; }
-.schedule-calendar td[data-outside] { background: #edf0f3; }
-.schedule-calendar td[aria-current="date"] { outline: 2px solid #245ca8; outline-offset: -2px; }
-.schedule-calendar ul { list-style: none; padding: 0; margin: 0.4rem 0; }
-.schedule-calendar li { margin: 0.35rem 0; }
-.schedule-calendar button { width: 100%; text-align: left; white-space: normal; overflow-wrap: anywhere; }
-.schedule-upcoming { list-style: none; padding: 0; }
-.schedule-upcoming li { border-bottom: 1px solid #bac4ce; padding-bottom: 0.5rem; overflow-wrap: anywhere; }
-.schedule-upcoming button { text-align: left; }
-.schedule-time-zone select { max-width: 100%; }
-@media (max-width: 1050px) {
-  .schedule-calendar-layout { grid-template-columns: minmax(0, 1fr); }
-}
-
-.schedule-records-scroll { overflow-x: auto; }
-
-.schedule-timeline { width: 100%; min-width: 1150px; border-collapse: collapse; color: #18212f; }
-.schedule-timeline th, .schedule-timeline td { border-bottom: 1px solid #bac4ce; padding: 0.5rem; text-align: left; }
-.schedule-timeline-scale { width: 600px; min-width: 600px; }
-.schedule-timeline-ticks { height: 2.5rem; position: relative; font-size: 0.75rem; }
-.schedule-timeline-ticks span { position: absolute; white-space: nowrap; }
-.schedule-timeline-track { position: relative; height: 2rem; background: white; }
-.schedule-timeline-tick { position: absolute; height: 100%; border-left: 1px solid #d9dfe5; }
-.schedule-timeline-bar, .schedule-timeline-milestone { position: absolute; top: 0.3rem; cursor: pointer; }
-.schedule-timeline-bar { height: 1.4rem; min-width: 2px; border: 1px solid #526477; background: #d9dfe5; padding: 0; }
-.schedule-timeline-bar[data-progress="in_progress"] { background: #c7ddfb; border-color: #245ca8; }
-.schedule-timeline-bar[data-progress="at_risk"] { background: #ffe2a6; border-color: #946000; }
-.schedule-timeline-bar[data-progress="completed"] { background: #c5e8d3; border-color: #26714b; }
-.schedule-timeline-bar-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-.schedule-timeline-milestone { transform: translateX(-50%); padding: 0; border: 0; background: transparent; color: #9b1c1c; font-size: 1.3rem; line-height: 1.4rem; }
-
 .messages-layout { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr); gap: 1rem; align-items: start; }
 .messages-sidebar { color: #18212f; }
 .conversation-list { list-style: none; padding: 0; }
