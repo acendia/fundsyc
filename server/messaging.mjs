@@ -70,8 +70,8 @@ function withPermissions(actor, proposal, conversation, participant, messages) {
 }
 
 // both messages and overview list only the caller's own active conversations
-export async function loadConversationSummaries(database, proposalId, userId, limit = null) {
-  return (await database.query(`select c.id,c.kind,
+// $1 is the proposal, the caller placeholder and limit are passed in so the overview can reuse this in its batch
+export const conversationSummariesSql = (userParam = "$2", limitSql = "") => `select c.id,c.kind,
       case when c.kind='group' then c.title else other.display_name end as title,
       c.created_by_user_id,c.created_at,coalesce(lastmsg.created_at,c.created_at) as last_activity_at
     from conversation_members me
@@ -79,8 +79,11 @@ export async function loadConversationSummaries(database, proposalId, userId, li
     left join lateral (select u.display_name from conversation_members o join users u on u.id=o.user_id
       where o.conversation_id=c.id and o.user_id<>me.user_id and o.status='active' limit 1) other on c.kind='direct'
     left join lateral (select max(m.created_at) as created_at from messages m where m.conversation_id=c.id and m.status='active') lastmsg on true
-    where me.proposal_id=$1 and me.user_id=$2 and me.status='active' and c.status='active'
-    order by last_activity_at desc,c.id desc ${limit === null ? "" : "limit $3"}`, limit === null ? [proposalId, userId] : [proposalId, userId, limit])).rows;
+    where me.proposal_id=$1 and me.user_id=${userParam} and me.status='active' and c.status='active'
+    order by last_activity_at desc,c.id desc ${limitSql}`;
+
+export async function loadConversationSummaries(database, proposalId, userId, limit = null) {
+  return (await database.query(conversationSummariesSql("$2", limit === null ? "" : "limit $3"), limit === null ? [proposalId, userId] : [proposalId, userId, limit])).rows;
 }
 
 export function addMessagingRoutes(app) {

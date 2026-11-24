@@ -14,15 +14,24 @@ export function addDocumentRoutes(app, storage = null) {
     res.set("Cache-Control", "private, no-store");
     if (!uuid.test(req.params.proposalId)) return res.status(404).json({error:"Proposal not found."});
     try {
-      const members = (await req.database.query(memberSql, [req.params.proposalId])).rows;
+      // these reads are independent, so they run side by side on the request pool instead of one after another
+      const [memberResult, proposalResult] = await Promise.all([
+        req.database.query(memberSql, [req.params.proposalId]),
+        req.database.query("select title,status,coordinator_partner_id from proposals where id=$1", [req.params.proposalId]),
+      ]);
+      const members = memberResult.rows;
       const actor = members.find(m => m.user_id === req.userId);
       if (!actor) return res.status(403).json({error:"You do not have access to this proposal."});
-      const proposal = (await req.database.query("select title,status,coordinator_partner_id from proposals where id=$1", [req.params.proposalId])).rows[0];
-      const docs = await req.database.query("select d.*, om.partner_id as owner_partner_id, u.display_name as owner_name, a.display_name as added_by_name from documents d join proposal_memberships om on om.proposal_id=d.proposal_id and om.user_id=d.owner_user_id join users u on u.id=d.owner_user_id join users a on a.id=d.added_by_user_id where d.proposal_id=$1 and d.status='active' order by d.updated_at desc,d.id", [req.params.proposalId]);
-      const versions = await req.database.query("select v.id,v.document_id,v.version_number,v.source_kind,v.file_name,v.size_bytes,v.external_url,v.version_note,v.review_status,v.created_at,u.display_name as added_by_name from document_versions v join documents d on d.id=v.document_id and d.proposal_id=v.proposal_id join users u on u.id=v.added_by_user_id where d.proposal_id=$1 and d.status='active' order by v.version_number desc", [req.params.proposalId]);
-      const reviews = (await poolReviews(req.database, req.params.proposalId));
+      const proposal = proposalResult.rows[0];
+      // only read the documents once access is confirmed
+      const [docs, versions, reviews, categoryResult] = await Promise.all([
+        req.database.query("select d.*, om.partner_id as owner_partner_id, u.display_name as owner_name, a.display_name as added_by_name from documents d join proposal_memberships om on om.proposal_id=d.proposal_id and om.user_id=d.owner_user_id join users u on u.id=d.owner_user_id join users a on a.id=d.added_by_user_id where d.proposal_id=$1 and d.status='active' order by d.updated_at desc,d.id", [req.params.proposalId]),
+        req.database.query("select v.id,v.document_id,v.version_number,v.source_kind,v.file_name,v.size_bytes,v.external_url,v.version_note,v.review_status,v.created_at,u.display_name as added_by_name from document_versions v join documents d on d.id=v.document_id and d.proposal_id=v.proposal_id join users u on u.id=v.added_by_user_id where d.proposal_id=$1 and d.status='active' order by v.version_number desc", [req.params.proposalId]),
+        poolReviews(req.database, req.params.proposalId),
+        req.database.query("select c.id,c.value,c.label,(select count(*)::int from documents d where d.proposal_id=c.proposal_id and d.category=c.value and d.status='active') as document_count from document_categories c where c.proposal_id=$1 and c.status='active' order by c.created_at,c.label,c.id", [req.params.proposalId]),
+      ]);
       const writable = canChangeDocuments(proposal);
-      const categories = (await req.database.query("select c.id,c.value,c.label,(select count(*)::int from documents d where d.proposal_id=c.proposal_id and d.category=c.value and d.status='active') as document_count from document_categories c where c.proposal_id=$1 and c.status='active' order by c.created_at,c.label,c.id", [req.params.proposalId])).rows;
+      const categories = categoryResult.rows;
       res.json({categories, can_manage_categories:canManageCategories(actor,proposal), proposal, reviewers:members.filter(m=>m.user_id!==req.userId && canAddDocument(m)), current_user_id:req.userId, can_add:writable && canAddDocument(actor), owners:members.filter(m=>canManageDocument(actor,m,proposal.coordinator_partner_id)), documents:docs.rows.map(d=>({...d, can_edit:writable && canManageDocument(actor, {user_id:d.owner_user_id,partner_id:d.owner_partner_id},proposal.coordinator_partner_id), versions:versions.rows.filter(v=>v.document_id===d.id).map(v=>({...v,reviews:reviews.filter(r=>r.version_id===v.id).map(r=>({...r,can_respond:writable && r.status==='pending' && r.reviewer_user_id===req.userId && canAddDocument(actor),can_cancel:writable && r.status==='pending' && canManageDocument(actor,{user_id:d.owner_user_id,partner_id:d.owner_partner_id},proposal.coordinator_partner_id)}))}))}))});
     } catch(error) { console.error("document read failed",error); res.status(500).json({error:"Could not load documents."}); }
   });

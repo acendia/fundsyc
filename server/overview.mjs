@@ -1,9 +1,9 @@
 import { loadRequirementPermissionContext, canReadRequirements, canManageRequirements } from "./requirement-permissions.mjs";
-import { loadRequirements } from "./requirements.mjs";
+import { requirementRowsSql, requirementLinksSql, buildRequirements } from "./requirements.mjs";
 import { summarize } from "./requirement-progress.mjs";
 import { canChangeDocuments, canAddDocument } from "./document-permissions.mjs";
 import { canReadMessaging } from "./messaging-permissions.mjs";
-import { loadConversationSummaries } from "./messaging.mjs";
+import { conversationSummariesSql } from "./messaging.mjs";
 import { dateInZone, addCalendarDays, calendarEntries, upcomingEntries } from "../shared/schedule-calendar.mjs";
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -40,9 +40,12 @@ export function addOverviewRoutes(app) {
         await c.query("rollback");
         return res.status(403).json({ error: "You do not have access to this proposal." });
       }
-      // batch the independent previews without changing their filters or ordering
+      // never read or count conversations the caller cannot access, including for the coordinator
+      const messagingAvailable = canReadMessaging(actor, proposal);
+      // batch the independent previews without changing their filters or ordering, one round trip for all of them
       const [{ header, tasks, documents, consortium, overdueTasks, reviews, overdueMilestones,
-        risks, myTasks, myReviews, events, milestones, taskDeadlines, timeline, discussions }] = (await c.query(`select
+        risks, myTasks, myReviews, events, milestones, taskDeadlines, timeline, discussions,
+        requirementRows, requirementLinks, conversations }] = (await c.query(`select
         (select row_to_json(s) from (select p.id,p.title,p.acronym,p.status,o.legal_name as coordinator_name
         from proposals p join consortium_partners cp on cp.id=p.coordinator_partner_id and cp.proposal_id=p.id
         join organizations o on o.id=cp.organization_id where p.id=$1) s) as header,
@@ -108,9 +111,12 @@ export function addOverviewRoutes(app) {
         order by case when s.start_date<=$2::date then 0 else 1 end,s.start_date,s.id limit 4) s) as timeline,
         array(select row_to_json(s) from (select d.id,d.title,greatest(d.updated_at,coalesce(r.latest,d.updated_at)) as last_activity_at,coalesce(r.replies,0)::int as reply_count
         from discussions d left join lateral (select max(updated_at) as latest,count(*) as replies from discussion_replies where discussion_id=d.id and proposal_id=d.proposal_id and status='active') r on true
-        where d.proposal_id=$1 and d.status='active' order by last_activity_at desc,d.id desc limit 3) s) as discussions`,
-        [proposalId, today, lastDay, timeZone, now, req.userId, canChangeDocuments(proposal) && canAddDocument(actor)])).rows;
-      const requirements = await loadRequirements(c, proposalId, today);
+        where d.proposal_id=$1 and d.status='active' order by last_activity_at desc,d.id desc limit 3) s) as discussions,
+        array(select row_to_json(s) from (${requirementRowsSql()}) s) as "requirementRows",
+        array(select row_to_json(s) from (${requirementLinksSql()}) s) as "requirementLinks",
+        array(select row_to_json(s) from (${conversationSummariesSql("$6", "limit 3")}) s where $8::boolean) as conversations`,
+        [proposalId, today, lastDay, timeZone, now, req.userId, canChangeDocuments(proposal) && canAddDocument(actor), messagingAvailable])).rows;
+      const requirements = buildRequirements(requirementRows, requirementLinks, today);
       const requirementSummary = summarize(requirements);
       const attention = [
         ...overdueTasks.map(task => shortTask(task, "Overdue task")),
@@ -129,9 +135,6 @@ export function addOverviewRoutes(app) {
       ].map(item => ({ ...item, overdue: Boolean(item.due_date && item.due_date < today) })).sort(attentionOrder).slice(0, 6);
 
       const upcoming = upcomingEntries(calendarEntries(events, milestones, timeZone, taskDeadlines), now, timeZone);
-      // never read or count conversations the caller cannot access, including for the coordinator
-      const messagingAvailable = canReadMessaging(actor, proposal);
-      const conversations = messagingAvailable ? await loadConversationSummaries(c, proposalId, req.userId, 3) : [];
       await c.query("commit");
       res.json({
         proposal: header, role: actor.access_role, today, through: lastDay, time_zone: timeZone, generated_at: now.toISOString(),
@@ -139,7 +142,7 @@ export function addOverviewRoutes(app) {
         attention, mine, upcoming: upcoming.slice(0, 5), timeline,
         discussions: discussions.map(item => ({ ...item, last_activity_at: new Date(item.last_activity_at).toISOString() })),
         messaging_available: messagingAvailable,
-        conversations: conversations.map(({ id, kind, title, last_activity_at }) => ({ id, kind, title, last_activity_at })),
+        conversations: conversations.map(({ id, kind, title, last_activity_at }) => ({ id, kind, title, last_activity_at: new Date(last_activity_at).toISOString() })),
         editable: ["draft", "in_preparation"].includes(proposal.status),
       });
     } catch (error) {

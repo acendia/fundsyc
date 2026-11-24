@@ -43,9 +43,8 @@ const categoryOrder = "case r.category when 'eligibility' then 0 when 'administr
 const priorityOrder = "case r.priority when 'urgent' then 0 when 'high' then 1 when 'medium' then 2 else 3 end";
 
 // requirements in the default order: stage, earliest deadline, priority, then the stable number
-export async function loadRequirements(db, proposalId, today, onlyId = null) {
-  const params = onlyId ? [proposalId, onlyId] : [proposalId];
-  const rows = (await db.query(`select r.id,r.requirement_number,r.title,r.description,r.category,r.owner_user_id,r.partner_id,r.due_date::text as due_date,r.priority,r.manual_completed,r.created_at,r.updated_at,${versionSql} as version,
+// $1 is the proposal and $2 the optional requirement, the overview reuses this sql in its batch
+export const requirementRowsSql = (onlyId = false) => `select r.id,r.requirement_number,r.title,r.description,r.category,r.owner_user_id,r.partner_id,r.due_date::text as due_date,r.priority,r.manual_completed,r.created_at,r.updated_at,${versionSql} as version,
       o.display_name as owner_name,org.legal_name as partner_name,cu.display_name as created_by_name,uu.display_name as updated_by_name,
       case
         when r.owner_user_id is not null then exists(select 1 from proposal_memberships m join users u on u.id=m.user_id join consortium_partners p on p.id=m.partner_id and p.proposal_id=m.proposal_id where m.proposal_id=r.proposal_id and m.user_id=r.owner_user_id and m.partner_id=r.partner_id and m.status='active' and u.status='active' and p.status='active')
@@ -59,11 +58,21 @@ export async function loadRequirements(db, proposalId, today, onlyId = null) {
     join users cu on cu.id=r.created_by_user_id
     join users uu on uu.id=r.updated_by_user_id
     where r.proposal_id=$1 and r.status='active' ${onlyId ? "and r.id=$2" : ""}
-    order by ${categoryOrder},r.due_date nulls last,${priorityOrder},r.requirement_number`, params)).rows;
-  const links = (await db.query(`select l.requirement_id,t.id,t.title,t.progress,t.status
+    order by ${categoryOrder},r.due_date nulls last,${priorityOrder},r.requirement_number`;
+export const requirementLinksSql = (onlyId = false) => `select l.requirement_id,t.id,t.title,t.progress,t.status
     from requirement_tasks l join tasks t on t.id=l.task_id and t.proposal_id=l.proposal_id
     where l.proposal_id=$1 and l.status='active' ${onlyId ? "and l.requirement_id=$2" : ""}
-    order by t.title,t.id`, params)).rows;
+    order by t.title,t.id`;
+
+export async function loadRequirements(db, proposalId, today, onlyId = null) {
+  const params = onlyId ? [proposalId, onlyId] : [proposalId];
+  const rows = (await db.query(requirementRowsSql(Boolean(onlyId)), params)).rows;
+  const links = (await db.query(requirementLinksSql(Boolean(onlyId)), params)).rows;
+  return buildRequirements(rows, links, today);
+}
+
+// joins the links to their requirement and adds the derived progress
+export function buildRequirements(rows, links, today) {
   return rows.map(row => {
     const tasks = links.filter(link => link.requirement_id === row.id).map(({ requirement_id, ...task }) => task);
     const { manual_completed, responsible_active, ...shown } = row;
