@@ -32,24 +32,6 @@
   .workspace-header select { max-width: 100%; }
 }
 
-.messages-layout { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(0, 2fr); gap: 1rem; align-items: start; }
-.messages-sidebar { color: #18212f; }
-.conversation-list { list-style: none; padding: 0; }
-.conversation-list li { margin: 0.5rem 0; overflow-wrap: anywhere; }
-.conversation-list button { width: 100%; text-align: left; white-space: normal; overflow-wrap: anywhere; }
-.conversation-list small { color: #526477; }
-.messages-thread { color: #18212f; min-width: 0; }
-.group-manage { border-bottom: 1px solid #bac4ce; padding-bottom: 0.5rem; margin-bottom: 0.5rem; }
-.message-stream { max-height: 420px; overflow-y: auto; background: white; border: 1px solid #bac4ce; padding: 0.5rem 0.75rem; margin: 0.5rem 0; }
-.message { border-bottom: 1px solid #d9dfe5; padding: 0.35rem 0; overflow-wrap: anywhere; }
-.message p { margin: 0.25rem 0; }
-.message-meta { font-size: 0.9rem; color: #526477; }
-.message-body { white-space: pre-wrap; }
-.message-removed { font-style: italic; color: #526477; }
-@media (max-width: 800px) {
-  .messages-layout { grid-template-columns: minmax(0, 1fr); }
-}
-
 .requirements-summary { display: flex; flex-wrap: wrap; border: 1px solid #bac4ce; background: white; margin: 0.75rem 0; color: #18212f; }
 .requirements-summary p { flex: 1 1 120px; margin: 0; padding: 0.6rem 0.9rem; border-right: 1px solid #d9dfe5; }
 .requirements-summary strong { display: block; font-size: 1.5rem; }
