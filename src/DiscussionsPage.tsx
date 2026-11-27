@@ -1,5 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { ApiFetch, DiscussionLinkKind, DiscussionList, DiscussionRecord } from "./api-types";
+import { Modal } from "./Modal";
+import "./DiscussionsPage.css";
 
 type Props = { initialDiscussionId?: string; proposalId: string; refreshKey: number; apiFetch: ApiFetch; onBusyChange: (busy: boolean) => void; onAccessLost: () => void };
 
@@ -10,7 +12,41 @@ const linkGroups: { kind: DiscussionLinkKind; label: string; key: keyof Discussi
   { kind: "workstream", label: "Workstreams", key: "workstreams" },
   { kind: "milestone", label: "Milestones", key: "milestones" },
 ];
-const dateTime = (value: string) => new Date(value).toLocaleString();
+const dateTimeFormat = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
+const dateTime = (value: string) => dateTimeFormat.format(new Date(value));
+const initials = (name: string) => name.trim().split(/\s+/).slice(0, 2).map(word => word[0]).join("").toUpperCase();
+// newest of the discussion edit and its replies, shown as last activity
+const lastActivity = (item: DiscussionRecord) => [item.updated_at, ...item.replies.map(reply => reply.updated_at)].sort().at(-1)!;
+
+function SearchIcon() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 21l-5-5m2-5a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z" /></svg>;
+}
+
+function LinkBadge({ item }: { item: DiscussionRecord }) {
+  if (!item.linked_kind) return <span className="discussions-muted">Not linked</span>;
+  if (!item.linked_item) return <span className="discussions-badge" data-removed="true">Linked item removed</span>;
+  return <span className="discussions-badge" data-kind={item.linked_item.kind}><strong>{kindLabels[item.linked_item.kind]}</strong> {item.linked_item.title}</span>;
+}
+
+type SortKey = "title" | "author" | "link" | "replies" | "activity";
+const columns: { key: SortKey; label: string }[] = [
+  { key: "title", label: "Discussion" }, { key: "author", label: "Started by" }, { key: "link", label: "Linked item" },
+  { key: "replies", label: "Replies" }, { key: "activity", label: "Last activity" },
+];
+const text = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+// unlinked discussions sort after linked ones, removed links in between
+const linkSortText = (item: DiscussionRecord) => item.linked_item ? `${kindLabels[item.linked_item.kind]} ${item.linked_item.title}` : item.linked_kind ? "\uffff" : "\uffff\uffff";
+function compareDiscussions(a: DiscussionRecord, b: DiscussionRecord, key: SortKey) {
+  if (key === "title") return text.compare(a.title, b.title);
+  if (key === "author") return text.compare(a.created_by_name, b.created_by_name);
+  if (key === "link") return text.compare(linkSortText(a), linkSortText(b));
+  if (key === "replies") return a.reply_count - b.reply_count;
+  return lastActivity(a).localeCompare(lastActivity(b));
+}
+
+function Person({ name, partner }: { name: string; partner: string }) {
+  return <div className="discussions-person"><span aria-hidden="true">{initials(name)}</span><div>{name}<small>{partner}</small></div></div>;
+}
 // the link select value is "kind:id", empty means no link
 const linkValue = (discussion?: DiscussionRecord) => discussion?.linked_kind && discussion.linked_id ? `${discussion.linked_kind}:${discussion.linked_id}` : "";
 const linkText = (discussion: DiscussionRecord) => discussion.linked_item ? `${kindLabels[discussion.linked_item.kind]}: ${discussion.linked_item.title}` : discussion.linked_kind ? "Linked item removed" : "None";
@@ -29,6 +65,12 @@ export function DiscussionsPage({ initialDiscussionId, proposalId, refreshKey, a
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
+  const [search, setSearch] = useState("");
+  const [linkFilter, setLinkFilter] = useState("");
+  const [mine, setMine] = useState(false);
+  // no sort until a column is clicked, the server order is used then
+  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" } | null>(null);
   const path = "/api/proposals/" + proposalId + "/discussions";
   useEffect(() => { onBusyChange(busy); }, [busy, onBusyChange]);
   useEffect(() => {
@@ -72,7 +114,7 @@ export function DiscussionsPage({ initialDiscussionId, proposalId, refreshKey, a
     event.preventDefault();
     const form = event.currentTarget;
     const result = await save("POST", "", "Discussion started.", discussionValues(new FormData(form)));
-    if (result) { form.reset(); setSelected(result.id); setEditing(false); setEditingReply(null); }
+    if (result) { form.reset(); setShowCreate(false); setSelected(result.id); setEditing(false); setEditingReply(null); }
   }
   async function updateDiscussion(event: FormEvent<HTMLFormElement>, discussion: DiscussionRecord) {
     event.preventDefault();
@@ -110,7 +152,7 @@ export function DiscussionsPage({ initialDiscussionId, proposalId, refreshKey, a
     return <>
       <p><label>Title <input name="title" required defaultValue={item?.title ?? ""} /></label></p>
       <p><label>Message <textarea name="body" required maxLength={10000} defaultValue={item?.body ?? ""} /></label></p>
-      <p><label>Linked item <select name="link" defaultValue={linkValue(item)}>
+      <p><label><span>Linked item <small>Optional</small></span> <select name="link" defaultValue={linkValue(item)}>
         <option value="">None</option>
         {staleLink && <option value={linkValue(item)}>Previous {kindLabels[staleLink].toLowerCase()} (removed)</option>}
         {linkGroups.map(group => linkable[group.key].length > 0 && <optgroup key={group.kind} label={group.label}>
@@ -119,55 +161,117 @@ export function DiscussionsPage({ initialDiscussionId, proposalId, refreshKey, a
       </select></label></p>
     </>;
   }
-  return <main>
-    <h1>Discussions</h1>
-    {message && <p role="status">{message}</p>}
-    {error && <p role="alert">{error}</p>}
-    {!data && !error && <p>Loading discussions...</p>}
+  const query = search.trim().toLowerCase();
+  const filtered = data?.discussions.filter(item => (!query || item.title.toLowerCase().includes(query) || item.body.toLowerCase().includes(query))
+    && (!linkFilter || (linkFilter === "none" ? !item.linked_kind : item.linked_kind === linkFilter))
+    && (!mine || item.created_by_user_id === data.current_user_id)) ?? [];
+  // ties keep the server order, so the list does not jump around
+  const rows = sort ? filtered.map((item, index) => ({ item, index }))
+    .sort((a, b) => (compareDiscussions(a.item, b.item, sort.key) * (sort.dir === "asc" ? 1 : -1)) || a.index - b.index)
+    .map(row => row.item) : filtered;
+  const toggleSort = (key: SortKey) => setSort(current => current?.key === key ? { key, dir: current.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" });
+  const filterCount = [linkFilter, mine].filter(Boolean).length;
+  function clearFilters() { setSearch(""); setLinkFilter(""); setMine(false); }
+  return <main className="proposal-overview discussions-page">
+    <header className="overview-heading overview-heading-row discussions-heading">
+      <div>
+        {selected && <button type="button" className="overview-link" disabled={busy} onClick={back}>← Back to discussions</button>}
+        <h1>{discussion?.title ?? "Discussions"}</h1>
+        <p>{discussion ? <>Started by {discussion.created_by_name} · {discussion.partner_name}</> : "Proposal-wide conversations, optionally linked to a task or schedule item."}</p>
+      </div>
+      {data && !selected && data.can_create && <button type="button" className="discussions-primary" aria-haspopup="dialog" disabled={busy} onClick={() => { setMessage(""); setShowCreate(true); }}><span aria-hidden="true">+</span> Start discussion</button>}
+      {discussion && !editing && (discussion.can_edit || discussion.can_remove) && <div className="discussions-actions">
+        {discussion.can_edit && <button type="button" className="discussions-button" disabled={busy} onClick={() => { setEditing(true); setEditingReply(null); setMessage(""); }}>Edit discussion</button>}
+        {discussion.can_remove && <button type="button" className="discussions-button discussions-danger" disabled={busy} onClick={() => void removeDiscussion(discussion)}>Remove discussion</button>}
+      </div>}
+    </header>
+    {message && !showCreate && <p className="discussions-feedback" role="status">{message}</p>}
+    {error && <p className="discussions-feedback" role="alert">{error}</p>}
+    {!data && !error && <p role="status">Loading discussions…</p>}
     {data && <>
-      <p>Viewers can read discussions. Contributors, partner admins and the coordinator can start discussions and reply.</p>
-      {selected ? discussion ? <section className="section section-partner">
-        <button type="button" disabled={busy} onClick={back}>Back to discussions</button>
-        <h2>{discussion.title}</h2>
-        {editing && discussion.can_edit ? <form key={discussion.id} onSubmit={event => void updateDiscussion(event, discussion)}><fieldset disabled={busy}>
-          {fields(data.linkable, discussion)}
-          <button>Save changes</button>{" "}<button type="button" onClick={() => setEditing(false)}>Cancel</button>
-        </fieldset></form> : <>
-          <p>Started by {discussion.created_by_name} ({discussion.partner_name}) on {dateTime(discussion.created_at)}</p>
-          <p>Last modified by {discussion.updated_by_name} on {dateTime(discussion.updated_at)}</p>
-          <p>Linked item: {linkText(discussion)}</p>
-          <p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{discussion.body}</p>
-          {discussion.can_edit && <button type="button" disabled={busy} onClick={() => { setEditing(true); setEditingReply(null); setMessage(""); }}>Edit discussion</button>}{" "}
-          {discussion.can_remove && <button type="button" disabled={busy} onClick={() => void removeDiscussion(discussion)}>Remove discussion</button>}
-        </>}
-        <h3>Replies ({discussion.reply_count})</h3>
-        {discussion.replies.length === 0 && <p>No replies yet.</p>}
-        {discussion.replies.map(reply => <article key={reply.id}>
-          <p><strong>{reply.created_by_name}</strong> ({reply.partner_name}) — {dateTime(reply.created_at)}{reply.updated_at !== reply.created_at ? ` (edited ${dateTime(reply.updated_at)})` : ""}</p>
-          {editingReply === reply.id && reply.can_edit ? <form onSubmit={event => void updateReply(event, discussion, reply.id)}><fieldset disabled={busy}>
-            <p><label>Edit reply <textarea name="body" required maxLength={10000} defaultValue={reply.body} /></label></p>
-            <button>Save reply</button>{" "}<button type="button" onClick={() => setEditingReply(null)}>Cancel</button>
-          </fieldset></form> : <>
-            <p style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{reply.body}</p>
-            {reply.can_edit && <button type="button" disabled={busy} onClick={() => { setEditingReply(reply.id); setEditing(false); setMessage(""); }}>Edit reply</button>}{" "}
-            {reply.can_remove && <button type="button" disabled={busy} onClick={() => void removeReply(discussion, reply.id)}>Remove reply</button>}
-          </>}
-        </article>)}
-        {discussion.can_reply && <form onSubmit={event => void postReply(event, discussion)}><fieldset disabled={busy}>
-          <p><label>Reply <textarea name="body" required maxLength={10000} /></label></p>
-          <button>Post reply</button>
-        </fieldset></form>}
-      </section> : <><p>This discussion is no longer available.</p><button type="button" onClick={back}>Back to discussions</button></> : <>
-        <h2>Active discussions</h2>
-        {data.discussions.length === 0 ? <p>No discussions yet.</p> : <table><thead><tr><th>Title</th><th>Started by</th><th>Date</th><th>Linked item</th><th>Replies</th></tr></thead><tbody>{data.discussions.map(item => <tr key={item.id}>
-          <td><button type="button" disabled={busy} onClick={() => open(item.id)}>{item.title}</button></td><td>{item.created_by_name} ({item.partner_name})</td><td>{dateTime(item.created_at)}</td><td>{linkText(item)}</td><td>{item.reply_count}</td>
-        </tr>)}</tbody></table>}
-        {data.can_create ? <section className="section section-create"><h2>Start a discussion</h2>
-          <form onSubmit={createDiscussion}><fieldset disabled={busy}>
+      {data.can_create && <Modal open={showCreate} onClose={() => { setShowCreate(false); setMessage(""); }} labelledBy="discussions-create-heading" busy={busy}>
+        <section className="discussions-page discussions-modal">
+          <h2 id="discussions-create-heading">Start a discussion</h2>
+          {message && <p className="discussions-feedback" role="status">{message}</p>}
+          <form onSubmit={createDiscussion}><fieldset className="discussions-form" disabled={busy}>
             {fields(data.linkable)}
-            <button>Start discussion</button>
+            <div className="discussions-actions"><button className="discussions-primary">Start discussion</button><button type="button" className="discussions-button" onClick={() => { setShowCreate(false); setMessage(""); }}>Cancel</button></div>
           </fieldset></form>
-        </section> : <p>You can read discussions. Viewers cannot start discussions or reply.</p>}
+        </section>
+      </Modal>}
+      {selected ? discussion ? <section className="discussions-panel discussions-detail">
+        {editing && discussion.can_edit ? <form key={discussion.id} onSubmit={event => void updateDiscussion(event, discussion)}><fieldset className="discussions-form" disabled={busy}>
+          <h2>Edit discussion</h2>
+          {fields(data.linkable, discussion)}
+          <div className="discussions-actions"><button className="discussions-primary">Save changes</button><button type="button" className="discussions-button" onClick={() => setEditing(false)}>Cancel</button></div>
+        </fieldset></form> : <article className="discussions-post">
+          <Person name={discussion.created_by_name} partner={discussion.partner_name} />
+          <p className="discussions-muted">{dateTime(discussion.created_at)}{discussion.updated_at !== discussion.created_at ? ` · edited ${dateTime(discussion.updated_at)} by ${discussion.updated_by_name}` : ""}</p>
+          <p className="discussions-body">{discussion.body}</p>
+          <p className="discussions-link-line">Linked item: <LinkBadge item={discussion} /></p>
+        </article>}
+        <section className="discussions-replies" aria-labelledby="discussions-replies-heading">
+          <h3 id="discussions-replies-heading">Replies <span className="discussions-count">{discussion.reply_count}</span></h3>
+          {discussion.replies.length === 0 && <p className="discussions-muted">No replies yet.</p>}
+          {discussion.replies.map(reply => <article className="discussions-reply" key={reply.id}>
+            <div className="discussions-reply-head">
+              <Person name={reply.created_by_name} partner={reply.partner_name} />
+              <p className="discussions-muted">{dateTime(reply.created_at)}{reply.updated_at !== reply.created_at ? ` (edited ${dateTime(reply.updated_at)})` : ""}</p>
+            </div>
+            {editingReply === reply.id && reply.can_edit ? <form onSubmit={event => void updateReply(event, discussion, reply.id)}><fieldset className="discussions-form" disabled={busy}>
+              <p><label>Edit reply <textarea name="body" required maxLength={10000} defaultValue={reply.body} /></label></p>
+              <div className="discussions-actions"><button className="discussions-primary">Save reply</button><button type="button" className="discussions-button" onClick={() => setEditingReply(null)}>Cancel</button></div>
+            </fieldset></form> : <>
+              <p className="discussions-body">{reply.body}</p>
+              {(reply.can_edit || reply.can_remove) && <div className="discussions-reply-actions">
+                {reply.can_edit && <button type="button" className="overview-link" disabled={busy} onClick={() => { setEditingReply(reply.id); setEditing(false); setMessage(""); }}>Edit reply</button>}
+                {reply.can_remove && <button type="button" className="overview-link discussions-danger" disabled={busy} onClick={() => void removeReply(discussion, reply.id)}>Remove reply</button>}
+              </div>}
+            </>}
+          </article>)}
+          {discussion.can_reply ? <form className="discussions-reply-form" onSubmit={event => void postReply(event, discussion)}><fieldset className="discussions-form" disabled={busy}>
+            <p><label>Reply <textarea name="body" required maxLength={10000} placeholder="Write a reply" /></label></p>
+            <div className="discussions-actions"><button className="discussions-primary">Post reply</button></div>
+          </fieldset></form> : <p className="discussions-muted">You can read this discussion. Viewers cannot reply.</p>}
+        </section>
+      </section> : <section className="discussions-panel discussions-detail"><p>This discussion is no longer available.</p><button type="button" className="discussions-button" onClick={back}>Back to discussions</button></section> : <>
+        <section className="discussions-panel" aria-labelledby="discussions-list-heading">
+          <div className="discussions-panel-heading">
+            <div><h2 id="discussions-list-heading">Active discussions</h2>
+              <p role="status">{filtered.length}{filtered.length !== data.discussions.length ? ` of ${data.discussions.length}` : ""} {data.discussions.length === 1 ? "discussion" : "discussions"}</p></div>
+            <div className="discussions-tools">
+              <div className="discussions-search"><SearchIcon /><input type="search" aria-label="Search discussions" placeholder="Search discussions" value={search} onChange={event => setSearch(event.target.value)} /></div>
+              <label className="discussions-select">Linked to <select value={linkFilter} onChange={event => setLinkFilter(event.target.value)}>
+                <option value="">Anything</option>{linkGroups.map(group => <option key={group.kind} value={group.kind}>{group.label}</option>)}<option value="none">Not linked</option>
+              </select></label>
+              <label className="discussions-check"><input type="checkbox" checked={mine} onChange={event => setMine(event.target.checked)} /> Started by me</label>
+              {(filterCount > 0 || query) && <button type="button" className="overview-link" onClick={clearFilters}>Clear</button>}
+            </div>
+          </div>
+          {filtered.length === 0 ? <div className="discussions-empty">
+            <p>{data.discussions.length === 0 ? "No discussions yet." : "No discussions match these filters."}</p>
+            {data.discussions.length === 0 && data.can_create && <button type="button" className="overview-link" onClick={() => setShowCreate(true)}>Start the first discussion</button>}
+          </div> : <div className="discussions-table-scroll" tabIndex={0} role="region" aria-label="Discussion table"><table>
+            <thead><tr>{columns.map(column => {
+              const active = sort?.key === column.key;
+              return <th key={column.key} scope="col" aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}>
+                <button type="button" className="discussions-sort" data-active={active || undefined} onClick={() => toggleSort(column.key)}
+                  aria-label={`Sort by ${column.label.toLowerCase()}, ${active && sort.dir === "asc" ? "descending" : "ascending"}`}>
+                  {column.label}<span aria-hidden="true">{active ? (sort.dir === "asc" ? "▲" : "▼") : "↕"}</span>
+                </button>
+              </th>;
+            })}</tr></thead>
+            <tbody>{rows.map(item => <tr key={item.id}>
+              <th scope="row"><button type="button" className="discussions-title-link" disabled={busy} onClick={() => open(item.id)}>{item.title}</button>
+                <small>{item.body.length > 110 ? item.body.slice(0, 110).trimEnd() + "…" : item.body}</small></th>
+              <td><Person name={item.created_by_name} partner={item.partner_name} /></td>
+              <td><LinkBadge item={item} /></td>
+              <td><span className="discussions-count">{item.reply_count}</span></td>
+              <td className="discussions-nowrap">{dateTime(lastActivity(item))}</td>
+            </tr>)}</tbody>
+          </table></div>}
+        </section>
+        <p className="discussions-muted">{data.can_create ? "Viewers can read discussions. Contributors, partner admins and the coordinator can start discussions and reply." : "You can read discussions. Viewers cannot start discussions or reply."}</p>
       </>}
     </>}
   </main>;

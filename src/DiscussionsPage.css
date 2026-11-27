@@ -1,0 +1,107 @@
+/* discussions screen, same look as tasks and schedule */
+.discussions-page {
+  --disc-border: #d9dfe5;
+  --disc-muted: #526477;
+  --disc-blue: #245ca8;
+  overflow-wrap: break-word;
+}
+.discussions-heading { align-items: center; }
+.discussions-heading .overview-link { font-weight: 600; }
+.discussions-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 0.45rem; }
+.discussions-heading > .discussions-actions, .discussions-heading > .discussions-primary { flex: 0 0 auto; }
+
+/* buttons, prefixed so the shared overview button reset does not win */
+.discussions-page .discussions-button, .discussions-page .discussions-primary {
+  display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.38rem 0.65rem; border: 1px solid var(--disc-border); border-radius: 0.4rem; background: white; color: #18212f; font: inherit; font-size: 0.85rem; font-weight: 600; white-space: nowrap; cursor: pointer;
+}
+.discussions-page .discussions-primary { background: var(--disc-blue); border-color: var(--disc-blue); color: white; }
+.discussions-page .discussions-button:hover:not(:disabled) { background: #eaf2ff; text-decoration: none; }
+.discussions-page .discussions-primary:hover:not(:disabled) { background: #1b4886; text-decoration: none; }
+.discussions-page .discussions-danger { color: #9b1c1c; }
+.discussions-page .discussions-button.discussions-danger:hover:not(:disabled) { background: #fff1f1; }
+.discussions-page button:disabled { opacity: 0.6; cursor: default; text-decoration: none; }
+.discussions-page .discussions-title-link { font-weight: 650; }
+.discussions-page :is(button, select, input, textarea, .discussions-table-scroll):focus-visible { outline: 2px solid var(--disc-blue); outline-offset: 2px; }
+
+.discussions-page .discussions-feedback { padding: 0.55rem 0.75rem; border-radius: 0.4rem; background: #edf0f3; color: #18212f; font-size: 0.85rem; }
+.discussions-page .discussions-muted { color: var(--disc-muted); font-size: 0.83rem; }
+.discussions-count { display: inline-block; min-width: 1.1rem; padding: 0.05rem 0.4rem; border-radius: 0.7rem; background: #edf0f3; color: var(--disc-muted); font-size: 0.75rem; font-weight: 600; text-align: center; font-variant-numeric: tabular-nums; }
+.discussions-nowrap { white-space: nowrap; }
+
+/* linked item badge, coloured like the schedule and tasks */
+.discussions-badge { display: inline-block; max-width: 100%; padding: 0.15rem 0.45rem; border-radius: 0.35rem; background: var(--tone-bg, #edf0f3); color: var(--tone, #425368); font-size: 0.75rem; line-height: 1.35; }
+.discussions-badge strong { font-weight: 650; margin-inline-end: 0.2rem; }
+.discussions-badge[data-kind="task"] { --tone: #224e94; --tone-bg: #e4edff; }
+.discussions-badge[data-kind="event"] { --tone: #1f5f7a; --tone-bg: #e3eef5; }
+.discussions-badge[data-kind="workstream"] { --tone: #255e44; --tone-bg: #e3f1e9; }
+.discussions-badge[data-kind="milestone"] { --tone: #663587; --tone-bg: #f0e7fb; }
+.discussions-badge[data-removed] { --tone: #9b3636; --tone-bg: #f7e9e9; }
+
+.discussions-person { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+.discussions-person > span { display: inline-grid; place-items: center; flex: none; width: 1.75rem; height: 1.75rem; border-radius: 50%; background: #eeebfc; color: #514186; font-size: 0.68rem; font-weight: 650; }
+.discussions-person > div { min-width: 0; font-weight: 600; }
+.discussions-person small { display: block; color: var(--disc-muted); font-size: 0.75rem; font-weight: 400; }
+
+/* list panel */
+.discussions-panel { margin-bottom: 1rem; background: white; border: 1px solid var(--disc-border); border-radius: 0.5rem; min-width: 0; }
+.discussions-panel-heading { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: 0.6rem 1rem; padding: 0.7rem 0.85rem; }
+.discussions-panel-heading h2 { margin: 0; font-size: 1rem; font-weight: 650; color: #214e86; }
+.discussions-panel-heading p { margin: 0.15rem 0 0; color: var(--disc-muted); font-size: 0.8rem; }
+.discussions-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem 0.65rem; }
+.discussions-search { display: flex; align-items: center; min-width: 0; gap: 0.35rem; padding-inline-start: 0.5rem; border: 1px solid var(--disc-border); border-radius: 0.4rem; color: var(--disc-muted); background: #f7f8fa; }
+.discussions-search svg { flex: none; }
+.discussions-page .discussions-search input { min-width: 0; width: 11rem; max-width: 100%; border: 0; background: transparent; color: #18212f; font: inherit; font-size: 0.85rem; padding: 0.35rem 0.4rem 0.35rem 0; }
+.discussions-search:focus-within { outline: 2px solid var(--disc-blue); outline-offset: 2px; }
+.discussions-page .discussions-search input:focus { outline: 0; }
+.discussions-select { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--disc-muted); font-size: 0.83rem; font-weight: 600; }
+.discussions-check { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem; font-weight: 600; }
+.discussions-page input[type="checkbox"] { margin: 0; accent-color: var(--disc-blue); }
+.discussions-page select, .discussions-page form :is(input:not([type="checkbox"]), textarea) { box-sizing: border-box; min-width: 0; max-width: 100%; padding: 0.35rem 0.45rem; border: 1px solid #bac4ce; border-radius: 0.35rem; background: white; color: inherit; font: inherit; font-size: 0.85rem; font-weight: 400; }
+.discussions-empty { padding: 1rem 0.85rem; border-top: 1px solid var(--disc-border); color: var(--disc-muted); }
+.discussions-empty p { margin: 0 0 0.25rem; }
+
+.discussions-table-scroll { overflow-x: auto; border-radius: 0 0 0.5rem 0.5rem; }
+.discussions-panel table { border-collapse: collapse; width: 100%; min-width: 46rem; font-size: 0.82rem; text-align: left; }
+.discussions-panel :is(th, td) { padding: 0.6rem 0.7rem; border-top: 1px solid var(--disc-border); vertical-align: top; }
+.discussions-panel thead th { background: #f3f5f7; color: var(--disc-muted); font-size: 0.7rem; font-weight: 650; text-transform: uppercase; letter-spacing: 0.035em; white-space: nowrap; vertical-align: middle; }
+.discussions-panel tbody th { width: 38%; font-weight: 400; }
+/* sortable column headers */
+.discussions-page .discussions-sort { display: inline-flex; align-items: center; gap: 0.3rem; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; white-space: nowrap; }
+.discussions-page .discussions-sort:hover { color: #18212f; text-decoration: none; }
+.discussions-sort span { color: #9aa7b4; font-size: 0.65rem; }
+.discussions-page .discussions-sort[data-active] { color: var(--disc-blue); }
+.discussions-sort[data-active] span { color: var(--disc-blue); }
+.discussions-panel tbody th small { display: block; margin-top: 0.2rem; color: var(--disc-muted); font-size: 0.78rem; }
+.discussions-panel tbody tr:hover { background: #f7f9fc; }
+
+/* thread */
+.discussions-detail { padding: clamp(0.75rem, 2vw, 1.15rem); }
+.discussions-post { padding-bottom: 1rem; border-bottom: 1px solid var(--disc-border); }
+.discussions-post > p { margin: 0.35rem 0 0; }
+.discussions-body { margin: 0.6rem 0 0; white-space: pre-wrap; }
+.discussions-post .discussions-body { font-size: 0.95rem; }
+.discussions-post .discussions-link-line { margin-top: 0.85rem; color: var(--disc-muted); font-size: 0.83rem; }
+.discussions-replies { padding-top: 1rem; }
+.discussions-replies h3 { display: flex; align-items: center; gap: 0.4rem; margin: 0 0 0.65rem; font-size: 0.95rem; font-weight: 650; }
+.discussions-reply { margin-bottom: 0.55rem; padding: 0.65rem 0.75rem; border: 1px solid var(--disc-border); border-radius: 0.45rem; font-size: 0.88rem; }
+.discussions-reply-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.3rem 0.75rem; }
+.discussions-reply-head p { margin: 0; }
+.discussions-reply .discussions-body { margin-top: 0.45rem; }
+.discussions-reply-actions { display: flex; gap: 0.75rem; margin-top: 0.45rem; }
+.discussions-reply-form { margin-top: 0.75rem; }
+
+/* forms, also used inside the start pop-up */
+.discussions-form { display: grid; gap: 0.65rem; margin: 0; padding: 0; border: 0; min-width: 0; }
+.discussions-form h2 { margin: 0; font-size: 1rem; font-weight: 650; }
+.discussions-form p { margin: 0; }
+.discussions-page form label { display: grid; gap: 0.25rem; font-size: 0.85rem; font-weight: 600; }
+.discussions-page form label small { display: inline; color: var(--disc-muted); font-weight: 400; }
+.discussions-page form :is(input:not([type="checkbox"]), select, textarea) { width: 100%; }
+.discussions-page textarea { min-height: 5rem; resize: vertical; }
+.discussions-form > .discussions-actions { padding-top: 0.65rem; border-top: 1px solid var(--disc-border); }
+.discussions-modal h2 { margin: 0 0 0.75rem; font-size: 1.15rem; }
+
+@media (max-width: 600px) {
+  .discussions-tools, .discussions-search { flex: 1 1 100%; }
+  .discussions-page .discussions-search input { width: 100%; }
+}
