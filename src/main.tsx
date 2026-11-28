@@ -7,6 +7,7 @@ import { MessagesPage } from "./MessagesPage";
 import { RequirementsPage } from "./RequirementsPage";
 import { OverviewPage } from "./OverviewPage";
 import { Modal } from "./Modal";
+import { ProposalSearch } from "./ProposalSearch";
 import { createRoot } from "react-dom/client";
 import { createClient, type SupabaseClient, type Session } from "@supabase/supabase-js";
 
@@ -57,7 +58,7 @@ function Login() {
   }
   if (!ready) return <main><p>Loading sign-in...</p></main>;
   if (registering && allowSignup) return <main><h1>Create an account</h1><form onSubmit={signUp}><p><label>Full name <input name="fullName" required /></label></p><p><label>Email <input name="email" type="email" required /></label></p><p><label>Password <input name="password" type="password" minLength={8} required /></label></p><button disabled={!authClient}>Create account</button></form><button type="button" onClick={() => { setRegistering(false); setMessage(""); }}>Back to sign in</button>{message && <p role="status">{message}</p>}</main>;
-  if (session) return <><p>Signed in as {session.user.email} <button onClick={() => authClient.auth.signOut()}>Sign out</button></p><App key={session.user.id} /></>;
+  if (session) return <App key={session.user.id} account={{ email: session.user.email ?? "", onSignOut: () => void authClient.auth.signOut() }} />;
   return <main><h1>Sign in to FundSyc</h1><form onSubmit={signIn}><p><label>Email <input name="email" type="email" required /></label></p><p><label>Password <input name="password" type="password" required /></label></p><button disabled={!authClient}>Sign in</button></form>{message && <p role="alert">{message}</p>}{allowSignup && <p><button type="button" onClick={() => { setRegistering(true); setMessage(""); }}>Create an account</button></p>}</main>;
 }
 
@@ -69,9 +70,54 @@ function RefreshIcon() {
   return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 4v6h-6M20 10a8 8 0 1 0 .6 4" /></svg>;
 }
 
+// sidebar order follows the design, every entry is a real section
+const navItems: { page: OverviewPageName | "overview"; label: string }[] = [
+  { page: "overview", label: "Overview" }, { page: "requirements", label: "Requirements" }, { page: "documents", label: "Documents" },
+  { page: "tasks", label: "Tasks" }, { page: "schedule", label: "Schedule" }, { page: "consortium", label: "Consortium" },
+  { page: "discussions", label: "Discussions" }, { page: "messages", label: "Messages" },
+];
+const navIcons: Record<string, string> = {
+  overview: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z",
+  requirements: "M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01",
+  documents: "M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z",
+  tasks: "M9 11l2.5 2.5L16 9M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z",
+  schedule: "M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1ZM4 10h16M8 3v4M16 3v4",
+  consortium: "M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 6.5M18 14a6 6 0 0 1 3.5 6",
+  discussions: "M4 5h16v11H9l-5 4Z M8 9h8M8 12h5",
+  messages: "M4 6h16v12H4zM4 7l8 6 8-6",
+  signout: "M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 16l-4-4 4-4M6 12h10",
+};
+function NavIcon({ name }: { name: string }) {
+  return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={navIcons[name]} /></svg>;
+}
+
+// account card in the top bar, the menu holds the sign out action
+function AccountMenu({ account, busy }: { account: { email: string; onSignOut: () => void }; busy: boolean }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: MouseEvent | KeyboardEvent) => {
+      if (event instanceof KeyboardEvent ? event.key === "Escape" : !ref.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close); document.addEventListener("keydown", close);
+    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", close); };
+  }, [open]);
+  return <div className="account-menu" ref={ref}>
+    <button type="button" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(value => !value)}>
+      <span className="workspace-avatar" aria-hidden="true">{account.email.slice(0, 2).toUpperCase()}</span>
+      <span className="account-menu-text"><small>Signed in as</small><strong>{account.email}</strong></span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 9l4-4 4 4M8 15l4 4 4-4" /></svg>
+    </button>
+    {open && <div className="account-menu-list" role="menu">
+      <button type="button" role="menuitem" disabled={busy} onClick={() => { setOpen(false); account.onSignOut(); }}><NavIcon name="signout" /> Sign out</button>
+    </div>}
+  </div>;
+}
+
 type Invitation = { id: string; title: string; legal_name: string; kind: string; granted_role: string };
 
-function App() {
+function App({ account }: { account: { email: string; onSignOut: () => void } }) {
   const [proposals, setProposals] = useState<Proposal[] | null>(null);
   const [activeProposalId, setActiveProposalId] = useState<string | null>(null);
   const [itemTarget, setTarget] = useState<(OverviewTarget & { proposalId: string }) | null>(null);
@@ -87,6 +133,8 @@ function App() {
   const [createMessage, setCreateMessage] = useState("");
   const [pageBusy, setPageBusy] = useState(false);
   const preferredProposal = useRef<string | null>(null);
+  // on small screens the sections scroll sideways, keep the current one visible
+  useEffect(() => { document.querySelector('.workspace-sidebar nav [aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "nearest" }); }, [page]);
   const refresh = useCallback(() => setRevision((current) => current + 1), []);
   const busy = pageBusy || saving || inviteBusy;
 
@@ -140,6 +188,8 @@ function App() {
   const noProposals = proposals?.length === 0;
   const createExpanded = showCreate;
   const target = itemTarget?.proposalId === activeProposalId ? itemTarget : null;
+  // same steps the old proposal select used
+  function chooseProposal(id: string) { setPageBusy(false); setTarget(null); setPage("overview"); setActiveProposalId(id); setCreateMessage(""); refresh(); }
   function navigate(next: OverviewPageName | "overview") { setTarget(null); setPageBusy(false); setShowCreate(false); setPage(next); refresh(); }
   function openItem(next: OverviewTarget) {
     if (!activeProposal) return;
@@ -147,25 +197,28 @@ function App() {
   }
   return <div className="workspace">
     <aside className="workspace-sidebar">
-      <h2>FundSyc</h2>
+      <h2 className="workspace-brand">FundSyc</h2>
       <nav aria-label="Proposal pages">
-        <button type="button" aria-current={page === "overview" ? "page" : undefined} disabled={!activeProposal || busy} onClick={() => navigate("overview")}>Overview</button>
-        <button type="button" aria-current={page === "consortium" ? "page" : undefined} disabled={(!activeProposal && !noProposals) || busy} onClick={() => navigate("consortium")}>Consortium</button>
-        <button type="button" aria-current={page === "documents" ? "page" : undefined} disabled={!activeProposal || busy} onClick={() => navigate("documents")}>Documents</button>
-        <button type="button" aria-current={page === "tasks" ? "page" : undefined} disabled={!activeProposal || busy} onClick={() => navigate("tasks")}>Tasks</button>
-        <button type="button" aria-current={page === "requirements" ? "page" : undefined} disabled={!activeProposal || busy} onClick={() => navigate("requirements")}>Requirements</button>
-        <button type="button" aria-current={page === "schedule" ? "page" : undefined} disabled={!activeProposal || busy} onClick={() => navigate("schedule")}>Schedule</button>
-        <button type="button" aria-current={page === "discussions" ? "page" : undefined} disabled={!activeProposal || busy} onClick={() => navigate("discussions")}>Discussions</button>
-        <button type="button" aria-current={page === "messages" ? "page" : undefined} disabled={!activeProposal || busy} onClick={() => navigate("messages")}>Messages</button>
+        {navItems.map(item => <button key={item.page} type="button" aria-current={page === item.page ? "page" : undefined}
+          disabled={(item.page === "consortium" ? !activeProposal && !noProposals : !activeProposal) || busy} onClick={() => navigate(item.page)}>
+          <NavIcon name={item.page} /><span>{item.label}</span>
+        </button>)}
       </nav>
+      <div className="workspace-account">
+        <span className="workspace-avatar" aria-hidden="true">{account.email.slice(0, 2).toUpperCase()}</span>
+        <div><small>Signed in as</small><strong title={account.email}>{account.email}</strong></div>
+        <button type="button" aria-label="Sign out" title="Sign out" disabled={busy} onClick={account.onSignOut}><NavIcon name="signout" /></button>
+      </div>
     </aside>
     <div className="workspace-content">
       <header className="workspace-header">
-        <p><strong>Active proposal:</strong> {activeProposal?.title ?? "None selected"}</p>
-        <label>Proposal <select aria-label="Active proposal" value={activeProposalId ?? ""} disabled={!proposals?.length || busy} onChange={(event) => { setPageBusy(false); setTarget(null); setPage("overview"); setActiveProposalId(event.target.value); setCreateMessage(""); refresh(); }}>
-          {!proposals?.length && <option value="">No proposals</option>}
-          {proposals?.map((proposal) => <option key={proposal.id} value={proposal.id}>{proposal.title}{proposal.acronym ? ` (${proposal.acronym})` : ""} — {proposal.status}</option>)}
-        </select></label>
+        <div className="workspace-active" title={activeProposal?.title}>
+          <small>Active proposal</small>
+          <strong>{activeProposal ? activeProposal.acronym || activeProposal.title : "None selected"}</strong>
+          {activeProposal?.acronym && <span>{activeProposal.title}</span>}
+        </div>
+        <ProposalSearch proposals={proposals} activeId={activeProposalId} disabled={busy} onChoose={chooseProposal} />
+        <AccountMenu account={account} busy={busy} />
       </header>
       <div className="workspace-tools">
         {page === "consortium" ? <>
