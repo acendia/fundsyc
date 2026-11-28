@@ -69,8 +69,8 @@ export function DiscussionsPage({ initialDiscussionId, proposalId, refreshKey, a
   const [search, setSearch] = useState("");
   const [linkFilter, setLinkFilter] = useState("");
   const [mine, setMine] = useState(false);
-  // no sort until a column is clicked, the server order is used then
-  const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" } | null>(null);
+  // up to two sort columns, like order by a, b in sql. empty means the server order
+  const [sorts, setSorts] = useState<{ key: SortKey; dir: "asc" | "desc" }[]>([]);
   const path = "/api/proposals/" + proposalId + "/discussions";
   useEffect(() => { onBusyChange(busy); }, [busy, onBusyChange]);
   useEffect(() => {
@@ -165,11 +165,18 @@ export function DiscussionsPage({ initialDiscussionId, proposalId, refreshKey, a
   const filtered = data?.discussions.filter(item => (!query || item.title.toLowerCase().includes(query) || item.body.toLowerCase().includes(query))
     && (!linkFilter || (linkFilter === "none" ? !item.linked_kind : item.linked_kind === linkFilter))
     && (!mine || item.created_by_user_id === data.current_user_id)) ?? [];
-  // ties keep the server order, so the list does not jump around
-  const rows = sort ? filtered.map((item, index) => ({ item, index }))
-    .sort((a, b) => (compareDiscussions(a.item, b.item, sort.key) * (sort.dir === "asc" ? 1 : -1)) || a.index - b.index)
+  // the first column decides, the second breaks ties, remaining ties keep the server order
+  const rows = sorts.length ? filtered.map((item, index) => ({ item, index }))
+    .sort((a, b) => sorts.reduce((result, sort) => result || compareDiscussions(a.item, b.item, sort.key) * (sort.dir === "asc" ? 1 : -1), 0) || a.index - b.index)
     .map(row => row.item) : filtered;
-  const toggleSort = (key: SortKey) => setSort(current => current?.key === key ? { key, dir: current.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" });
+  // a sorted column goes asc, desc, then off. a new column becomes the second one, or replaces it when two are set
+  const toggleSort = (key: SortKey) => setSorts(current => {
+    const existing = current.find(sort => sort.key === key);
+    if (existing) return existing.dir === "asc" ? current.map(sort => sort.key === key ? { key, dir: "desc" as const } : sort) : current.filter(sort => sort.key !== key);
+    return [...current.slice(0, 1), { key, dir: "asc" as const }];
+  });
+  const sortName = (key: SortKey) => columns.find(column => column.key === key)!.label;
+  const sortSummary = sorts.map(sort => `${sortName(sort.key)} ${sort.dir === "asc" ? "ascending" : "descending"}`).join(", then ");
   const filterCount = [linkFilter, mine].filter(Boolean).length;
   function clearFilters() { setSearch(""); setLinkFilter(""); setMine(false); }
   return <main className="proposal-overview discussions-page">
@@ -238,7 +245,8 @@ export function DiscussionsPage({ initialDiscussionId, proposalId, refreshKey, a
         <section className="discussions-panel" aria-labelledby="discussions-list-heading">
           <div className="discussions-panel-heading">
             <div><h2 id="discussions-list-heading">Active discussions</h2>
-              <p role="status">{filtered.length}{filtered.length !== data.discussions.length ? ` of ${data.discussions.length}` : ""} {data.discussions.length === 1 ? "discussion" : "discussions"}</p></div>
+              <p role="status">{filtered.length}{filtered.length !== data.discussions.length ? ` of ${data.discussions.length}` : ""} {data.discussions.length === 1 ? "discussion" : "discussions"}
+                {sorts.length > 0 && <> · Sorted by {sortSummary} <button type="button" className="overview-link" onClick={() => setSorts([])}>Reset sort</button></>}</p></div>
             <div className="discussions-tools">
               <div className="discussions-search"><SearchIcon /><input type="search" aria-label="Search discussions" placeholder="Search discussions" value={search} onChange={event => setSearch(event.target.value)} /></div>
               <label className="discussions-select">Linked to <select value={linkFilter} onChange={event => setLinkFilter(event.target.value)}>
@@ -253,11 +261,13 @@ export function DiscussionsPage({ initialDiscussionId, proposalId, refreshKey, a
             {data.discussions.length === 0 && data.can_create && <button type="button" className="overview-link" onClick={() => setShowCreate(true)}>Start the first discussion</button>}
           </div> : <div className="discussions-table-scroll" tabIndex={0} role="region" aria-label="Discussion table"><table>
             <thead><tr>{columns.map(column => {
-              const active = sort?.key === column.key;
-              return <th key={column.key} scope="col" aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}>
-                <button type="button" className="discussions-sort" data-active={active || undefined} onClick={() => toggleSort(column.key)}
-                  aria-label={`Sort by ${column.label.toLowerCase()}, ${active && sort.dir === "asc" ? "descending" : "ascending"}`}>
-                  {column.label}<span aria-hidden="true">{active ? (sort.dir === "asc" ? "▲" : "▼") : "↕"}</span>
+              const position = sorts.findIndex(sort => sort.key === column.key);
+              const sort = sorts[position];
+              const next = !sort ? "sort ascending" : sort.dir === "asc" ? "sort descending" : "remove this sort";
+              return <th key={column.key} scope="col" aria-sort={position === 0 ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}>
+                <button type="button" className="discussions-sort" data-active={sort ? true : undefined} onClick={() => toggleSort(column.key)}
+                  aria-label={`${column.label}${sort ? `, sorted ${sort.dir === "asc" ? "ascending" : "descending"}${sorts.length > 1 ? `, sort ${position + 1} of ${sorts.length}` : ""}` : ""}. Click to ${next}.`}>
+                  {column.label}<span aria-hidden="true">{sort ? <>{sort.dir === "asc" ? "▲" : "▼"}{sorts.length > 1 && <sup>{position + 1}</sup>}</> : "↕"}</span>
                 </button>
               </th>;
             })}</tr></thead>

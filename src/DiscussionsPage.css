@@ -71,6 +71,8 @@
 .discussions-sort span { color: #9aa7b4; font-size: 0.65rem; }
 .discussions-page .discussions-sort[data-active] { color: var(--disc-blue); }
 .discussions-sort[data-active] span { color: var(--disc-blue); }
+.discussions-sort sup { margin-inline-start: 0.1rem; font-size: 0.6rem; font-weight: 700; }
+.discussions-panel-heading p .overview-link { margin-inline-start: 0.25rem; font-size: 0.8rem; }
 .discussions-panel tbody th small { display: block; margin-top: 0.2rem; color: var(--disc-muted); font-size: 0.78rem; }
 .discussions-panel tbody tr:hover { background: #f7f9fc; }
 
