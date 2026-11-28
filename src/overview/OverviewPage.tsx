@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { entryTime } from "./schedule-calendar";
-import { scheduleProgressOptions } from "./models";
-import type { ApiFetch, OverviewData, OverviewItem, OverviewTarget } from "./api-types";
+import { entryTime } from "../schedule/schedule-calendar";
+import { scheduleProgressOptions } from "../models";
+import type { ApiFetch, OverviewData, OverviewItem, OverviewTarget } from "../api-types";
 
 type Props = { proposalId: string; refreshKey: number; apiFetch: ApiFetch; onAccessLost: () => void; onOpen: (target: OverviewTarget) => void };
 const roleNames: Record<string, string> = { coordinator_manager: "Coordinator", partner_admin: "Partner administrator", contributor: "Contributor", viewer: "Viewer" };

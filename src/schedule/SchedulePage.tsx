@@ -4,8 +4,8 @@ import { ScheduleTimeline } from "./ScheduleTimeline";
 import { ScheduleCalendar } from "./ScheduleCalendar";
 import { calendarEntries, entryTime, dateInZone, dayLabel } from "./schedule-calendar";
 import { buildScheduleIcs } from "./schedule-ics";
-import { scheduleEventTypeOptions, scheduleProgressOptions, taskProgressOptions } from "./models";
-import type { ApiFetch } from "./api-types";
+import { scheduleEventTypeOptions, scheduleProgressOptions, taskProgressOptions } from "../models";
+import type { ApiFetch } from "../api-types";
 import "./SchedulePage.css";
 
 type Kind = "events" | "workstreams" | "milestones";

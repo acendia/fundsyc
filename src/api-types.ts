@@ -325,7 +325,7 @@ export type OverviewData = {
   };
   attention: OverviewItem[];
   mine: OverviewItem[];
-  upcoming: import("./schedule-calendar").CalendarEntry[];
+  upcoming: import("./schedule/schedule-calendar").CalendarEntry[];
   timeline: { id: string; title: string; partner_name: string; start_date: string; end_date: string; progress: string }[];
   discussions: { id: string; title: string; last_activity_at: string; reply_count: number }[];
   messaging_available: boolean;

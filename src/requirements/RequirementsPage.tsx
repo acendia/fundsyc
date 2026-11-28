@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { requirementCategoryOptions, taskPriorityOptions, taskProgressOptions } from "./models";
-import type { ApiFetch, RequirementList, RequirementRecord } from "./api-types";
+import { requirementCategoryOptions, taskPriorityOptions, taskProgressOptions } from "../models";
+import type { ApiFetch, RequirementList, RequirementRecord } from "../api-types";
 
 type Props = { initialRequirementId?: string; proposalId: string; refreshKey: number; apiFetch: ApiFetch; onBusyChange: (busy: boolean) => void; onAccessLost: () => void; onOpenTask: (id: string) => void };
 type Notice = { code: string; requirement: string; error: string; unfinished: { id: string; title: string; progress: string }[]; removed: { id: string; title: string }[] };

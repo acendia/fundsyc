@@ -1,5 +1,5 @@
 import { useId, useState, type KeyboardEvent } from "react";
-import type { Proposal } from "./api-types";
+import type { Proposal } from "../api-types";
 
 type Props = { proposals: Proposal[] | null; activeId: string | null; disabled: boolean; onChoose: (id: string) => void };
 

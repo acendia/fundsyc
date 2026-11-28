@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
-import type { ApiFetch, DocumentList, DocumentRecord, DocumentVersionRecord } from "./api-types";
+import type { ApiFetch, DocumentList, DocumentRecord, DocumentVersionRecord } from "../api-types";
 import "./DocumentsPage.css";
-import { Modal } from "./Modal";
+import { Modal } from "../components/Modal";
 
 type Props = { initialDocumentId?: string; proposalId: string; refreshKey: number; apiFetch: ApiFetch; onBusyChange: (busy: boolean) => void; onAccessLost: () => void };
 

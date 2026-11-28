@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
-import type { ApiFetch, DiscussionLinkKind, DiscussionList, DiscussionRecord } from "./api-types";
-import { Modal } from "./Modal";
+import type { ApiFetch, DiscussionLinkKind, DiscussionList, DiscussionRecord } from "../api-types";
+import { Modal } from "../components/Modal";
 import "./DiscussionsPage.css";
 
 type Props = { initialDiscussionId?: string; proposalId: string; refreshKey: number; apiFetch: ApiFetch; onBusyChange: (busy: boolean) => void; onAccessLost: () => void };

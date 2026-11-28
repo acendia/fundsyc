@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
-import type { ApiFetch, TaskActivityRecord, TaskHistoryEvent, TaskHistoryPage } from "./api-types";
-import { taskProgressOptions, taskPriorityOptions } from "./models";
+import type { ApiFetch, TaskActivityRecord, TaskHistoryEvent, TaskHistoryPage } from "../api-types";
+import { taskProgressOptions, taskPriorityOptions } from "../models";
 
 // same date style as the rest of the tasks screen
 const whenFormat = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });

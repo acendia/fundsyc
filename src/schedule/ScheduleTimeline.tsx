@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { addCalendarDays, dayLabel, moveCalendarMonth } from "./schedule-calendar";
 import { calendarDayCount, timelinePosition } from "./schedule-timeline";
-import { scheduleProgressOptions } from "./models";
+import { scheduleProgressOptions } from "../models";
 
 type TimelineItem = {
   id: string; title: string; partner_name: string; progress?: string;

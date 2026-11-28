@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
-import type { ApiFetch, Contact, Proposal } from "./api-types";
-import { Modal } from "./Modal";
+import type { ApiFetch, Contact, Proposal } from "../api-types";
+import { Modal } from "../components/Modal";
 
 type Props = { proposal: Proposal; apiFetch: ApiFetch; onChange: () => void; onBusyChange: (busy: boolean) => void };
 type PartnerFeedback = { partnerId: string; text: string };

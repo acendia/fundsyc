@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { SchedulePage } from "./SchedulePage";
-import { TasksPage } from "./TasksPage";
-import { DocumentsPage } from "./DocumentsPage";
-import { DiscussionsPage } from "./DiscussionsPage";
-import { MessagesPage } from "./MessagesPage";
-import { RequirementsPage } from "./RequirementsPage";
-import { OverviewPage } from "./OverviewPage";
-import { Modal } from "./Modal";
-import { ProposalSearch } from "./ProposalSearch";
+import { SchedulePage } from "./schedule/SchedulePage";
+import { TasksPage } from "./tasks/TasksPage";
+import { DocumentsPage } from "./documents/DocumentsPage";
+import { DiscussionsPage } from "./discussions/DiscussionsPage";
+import { MessagesPage } from "./messages/MessagesPage";
+import { RequirementsPage } from "./requirements/RequirementsPage";
+import { OverviewPage } from "./overview/OverviewPage";
+import { Modal } from "./components/Modal";
+import { ProposalSearch } from "./components/ProposalSearch";
 import { createRoot } from "react-dom/client";
 import { createClient, type SupabaseClient, type Session } from "@supabase/supabase-js";
 
@@ -62,8 +62,8 @@ function Login() {
   return <main><h1>Sign in to FundSyc</h1><form onSubmit={signIn}><p><label>Email <input name="email" type="email" required /></label></p><p><label>Password <input name="password" type="password" required /></label></p><button disabled={!authClient}>Sign in</button></form>{message && <p role="alert">{message}</p>}{allowSignup && <p><button type="button" onClick={() => { setRegistering(true); setMessage(""); }}>Create an account</button></p>}</main>;
 }
 
-import "./sections.css";
-import { ConsortiumPage } from "./ConsortiumPage";
+import "./styles/sections.css";
+import { ConsortiumPage } from "./consortium/ConsortiumPage";
 import type { Proposal, OverviewPageName, OverviewTarget } from "./api-types";
 
 function RefreshIcon() {

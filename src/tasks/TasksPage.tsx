@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { TaskActivity } from "./TaskActivity";
-import { taskProgressOptions, taskPriorityOptions } from "./models";
-import type { ApiFetch, TaskList, TaskRecord } from "./api-types";
+import { taskProgressOptions, taskPriorityOptions } from "../models";
+import type { ApiFetch, TaskList, TaskRecord } from "../api-types";
 import "./TasksPage.css";
 
 type Props = { initialTaskId?: string; proposalId: string; refreshKey: number; apiFetch: ApiFetch; onBusyChange: (busy: boolean) => void; onAccessLost: () => void };

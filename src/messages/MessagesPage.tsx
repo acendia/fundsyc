@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import type { ApiFetch, ConversationDetail, ConversationList, ConversationMember, ConversationMessage, MessagePerson } from "./api-types";
-import { Modal } from "./Modal";
+import type { ApiFetch, ConversationDetail, ConversationList, ConversationMember, ConversationMessage, MessagePerson } from "../api-types";
+import { Modal } from "../components/Modal";
 import "./MessagesPage.css";
 
 type Props = { initialConversationId?: string; proposalId: string; refreshKey: number; apiFetch: ApiFetch; onBusyChange: (busy: boolean) => void; onAccessLost: () => void };
